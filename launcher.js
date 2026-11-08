@@ -258,6 +258,15 @@ function shapeSwatch(shape) {
     return '<i class="fa-solid fa-note-sticky"></i>';
 }
 
+/** แถบเลื่อน + ช่องตัวเลขที่พิมพ์เองได้ (ขนาดไอคอนเก็บเป็น % ของปุ่ม แต่แสดงและพิมพ์เป็น px) */
+const sliderRow = (k, min, max, step, v, unit, label, num = k) => `
+    <div class="ayc-look-slider">
+      <input type="range" class="ayc-range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${v}" aria-label="${esc(label)}">
+      <label class="ayc-valbox" title="${esc(label)}"><input type="number" data-num="${num}" inputmode="numeric" aria-label="${esc(label)}"><i>${unit}</i></label>
+    </div>`;
+/** ขนาดไอคอนจริงเป็น px (ปุ่มวาดด้วยสูตรเดียวกันใน applyLook) */
+const iconPx = L => Math.round(clamp(Number(L.size) || 48, 24, 160) * clamp(Number(L.iconSize) || 44, 20, 100) / 100);
+
 const opt = (list, cur) => list.map(([v, t]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`).join('');
 
 /** ส่วนแต่งปุ่มลอยในหน้า ตั้งค่า ของแผง (เปลี่ยนแล้วเห็นทั้งตัวอย่างและปุ่มจริงทันที) */
@@ -287,9 +296,9 @@ export function lookEditorHtml() {
       <input type="file" accept="image/*" hidden>
     </div>
     <span>ข้อความ</span><input type="text" class="ayc-input" data-k="label" maxlength="16" value="${esc(L.label)}" title="แสดงเมื่อเลือกรูปทรงแคปซูล" autocomplete="off">
-    <span>ขนาด</span><input type="range" class="ayc-range" data-k="size" min="28" max="140" step="1" value="${L.size}">
-    <span>ไอคอน</span><input type="range" class="ayc-range" data-k="iconSize" min="20" max="100" step="1" value="${L.iconSize}">
-    <span>ความทึบ</span><input type="range" class="ayc-range" data-k="opacity" min="20" max="100" step="5" value="${L.opacity}" title="ตอนไม่ได้แตะ (แตะหรือชี้แล้วชัดเต็ม)">
+    <span>ขนาด</span>${sliderRow('size', 28, 140, 1, L.size, 'px', 'ขนาดปุ่ม')}
+    <span>ไอคอน</span>${sliderRow('iconSize', 20, 100, 1, L.iconSize, 'px', 'ขนาดไอคอน (px)', 'iconPx')}
+    <span>ความทึบ</span>${sliderRow('opacity', 20, 100, 5, L.opacity, '%', 'ความทึบตอนไม่ได้แตะ (แตะหรือชี้แล้วชัดเต็ม)')}
     <span>พื้น</span>
     <div class="ayc-look-inline"><select class="ayc-input ayc-select" data-k="bg">${opt(BGS, L.bg)}</select><input type="color" data-k="bgColor" value="${esc(L.bgColor)}"></div>
     <span>สีไอคอน</span>
@@ -310,6 +319,15 @@ export function mountLookEditor(box, { toast = globalThis.toastr } = {}) {
     const preview = box.querySelector('[data-ref="look-preview"]');
     const refresh = () => {
         const cur = look();
+        // ตัวเลขข้างแถบเลื่อน (ไม่เขียนทับช่องที่กำลังพิมพ์อยู่)
+        const active = document.activeElement;
+        const nums = { size: cur.size, iconPx: iconPx(cur), opacity: cur.opacity };
+        for (const el of box.querySelectorAll('[data-num]')) {
+            if (el.dataset.num === 'iconPx') { el.min = String(Math.round(cur.size * 0.2)); el.max = String(cur.size); }
+            else { const r = box.querySelector(`[data-k="${el.dataset.num}"]`); el.min = r.min; el.max = r.max; }
+            if (el !== active) el.value = String(nums[el.dataset.num]);
+        }
+        for (const r of box.querySelectorAll('input[type="range"][data-k]')) if (r !== active) r.value = String(cur[r.dataset.k]);
         applyLook(preview, cur);
         const pb = preview.querySelector('.ayc-lbadge');
         pb.textContent = String((host.enabled() ? host.count() : 0) || 3); // ตัวอย่างโชว์ตัวเลขเสมอ
@@ -356,6 +374,27 @@ export function mountLookEditor(box, { toast = globalThis.toastr } = {}) {
         try { set({ image: await imageToDataUrl(f) }); sync(); }
         catch (err) { toast?.error(`ใช้รูปนี้ไม่ได้: ${err?.message ?? err}`); }
     });
+    const onNum = e => {
+        const el = e.target.closest('[data-num]');
+        if (!el || !box.contains(el)) return;
+        const n = Number(el.value);
+        if (el.value === '' || !Number.isFinite(n)) { if (e.type === 'change') refresh(); return; }
+        const k = el.dataset.num;
+        if (k === 'iconPx') {
+            const size = Number(look().size) || 48;
+            const pct = clamp(Math.round(n * 100 / size), 20, 100);
+            if (e.type === 'input' && Math.abs(Math.round(size * pct / 100) - n) > 1) return; // ยังพิมพ์ไม่จบ
+            set({ iconSize: pct });
+        } else {
+            const min = Number(el.min), max = Number(el.max);
+            if (e.type === 'input' && (n < min || n > max)) return; // ยังพิมพ์ไม่จบ เช่น "1" ระหว่างพิมพ์ "120"
+            set({ [k]: clamp(Math.round(n), min, max) });
+        }
+        if (e.type === 'change') { el.blur(); refresh(); }
+    };
+    box.addEventListener('input', onNum);
+    box.addEventListener('change', onNum);
+    box.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.closest('[data-num]')) e.target.blur(); });
     const onField = e => {
         const el = e.target.closest('[data-k]');
         if (!el || !box.contains(el)) return;
