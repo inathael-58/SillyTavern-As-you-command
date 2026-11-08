@@ -671,12 +671,14 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 }
 #ayc-overlay .ayc-valbox:focus-within { border-color: var(--ayc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ayc-accent) 22%, transparent); }
 #ayc-overlay .ayc-valbox input {
-    -webkit-appearance: none !important; appearance: textfield !important; -moz-appearance: textfield !important;
+    /* none ไม่ใช่ textfield: Safari ถือ appearance กับ -webkit-appearance เป็นตัวเดียวกัน และ textfield ทำให้ iOS วาดช่องขาวทับ */
+    -webkit-appearance: none !important; appearance: none !important;
     width: 3.2ch !important; min-width: 0 !important; height: 30px !important; min-height: 0 !important;
     margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; outline: none !important;
     box-shadow: none !important; background: transparent !important; color: var(--ayc-fg) !important;
     font: inherit !important; font-size: 16px !important; font-weight: 700 !important; text-align: right !important;
 }
+@supports (-moz-appearance: none) { #ayc-overlay .ayc-valbox input { -moz-appearance: textfield !important; } }
 #ayc-overlay .ayc-valbox input::-webkit-inner-spin-button, #ayc-overlay .ayc-valbox input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 #ayc-overlay .ayc-valbox i { font-style: normal; font-size: 12px; color: var(--ayc-dim); }
 #ayc-overlay .ayc-look-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 4px; font-size: 13.5px; }
