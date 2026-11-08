@@ -178,13 +178,21 @@ export function renderLauncher() {
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); host.open(); } });
     el.addEventListener('contextmenu', e => e.preventDefault()); // กดค้างเป็นของเรา ไม่ใช่เมนูของเบราว์เซอร์
 
-    let start = null, moved = false, longTimer = null, longDone = false;
+    let start = null, moved = false, longTimer = null, longDone = false, skipClick = false;
+    // เปิดแผงตอน click ไม่ใช่ pointerup: ถ้าเปิดตอน pointerup แผงจะโผล่ใต้นิ้ว แล้ว click ที่ตามมาไปโดนพื้นหลังแผงจนปิดทันที
+    el.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (skipClick) { skipClick = false; return; } // click ที่ตามหลังการลาก/กดค้าง
+        host.open();
+    });
     el.addEventListener('pointerdown', e => {
         if (e.button !== 0) return;
         const r = el.getBoundingClientRect();
         start = { x: e.clientX, y: e.clientY, left: r.left, top: r.top, id: e.pointerId };
         moved = false;
         longDone = false;
+        skipClick = false;
         clearTimeout(longTimer);
         longTimer = setTimeout(() => { if (start && !moved) { longDone = true; host.customize(); } }, 650);
         try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
@@ -204,8 +212,9 @@ export function renderLauncher() {
         if (!start || e.pointerId !== start.id) return;
         start = null;
         clearTimeout(longTimer);
-        if (longDone) return;
-        if (!moved) { if (e.type === 'pointerup') host.open(); return; }
+        if (longDone) { skipClick = true; return; }
+        if (!moved) return; // แตะธรรมดา: ให้ click เป็นคนเปิดแผง
+        skipClick = true;
         el.classList.remove('ayc-dragging');
         const { x: ox, y: oy, w: vw, h: vh } = visibleArea();
         const b = el.getBoundingClientRect();
