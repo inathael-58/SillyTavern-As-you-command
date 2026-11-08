@@ -10,7 +10,7 @@ import { initLauncher, renderLauncher, updateLauncherBadge, resetLauncherPos, re
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.2.2'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.2.3'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'starters.js', 'launcher.js', 'style.css', 'manifest.json'];
@@ -538,16 +538,46 @@ function goTab(tab) {
 
 let openedAt = 0;
 
+/** แจ้ง error บนจอ (บนมือถือดู console ไม่ได้) */
+function reportError(where, err) {
+    console.error(LOG, where, err);
+    const msg = String(err?.message ?? err);
+    try { toastr.error(`${where}: ${msg}`, 'As you command', { timeOut: 15000, extendedTimeOut: 15000 }); } catch { /* ignore */ }
+}
+
+function safeLookHtml() {
+    try { return lookEditorHtml(); }
+    catch (err) { reportError('ส่วนแต่งปุ่มลอยพัง', err); return `<div class="ayc-look"><small>แต่งปุ่มไม่ได้: ${esc(err?.message ?? err)}</small></div>`; }
+}
+
 function openOverlay(tab = null) {
-    if (!$root) buildOverlay();
-    openedAt = Date.now();
-    ui.tab = tab || settings().lastTab || 'global';
-    ui.query = '';
-    $root.find('[data-ref="search"]').val('');
-    $root.find('.ayc-layer').remove();
-    render(true);
-    $root.removeClass('ayc-hidden').attr('aria-hidden', 'false');
-    $('html').addClass('ayc-noscroll');
+    try {
+        if (!$root) {
+            try { buildOverlay(); }
+            catch (err) { $root?.remove(); $root = null; throw err; } // สร้างไม่ครบ อย่าเก็บตัวพังไว้
+        }
+        openedAt = Date.now();
+        const want = tab || settings().lastTab || 'global';
+        ui.tab = ['global', 'chat', 'lib', 'settings'].includes(want) ? want : 'global';
+        ui.query = '';
+        $root.find('[data-ref="search"]').val('');
+        $root.find('.ayc-layer').remove();
+        // โชว์แผงก่อน แล้วค่อยวาดเนื้อหา: ถ้าส่วนไหนพัง แผงยังเปิดอยู่ ไม่หายเงียบ
+        $root.removeClass('ayc-hidden').attr('aria-hidden', 'false');
+        $('html').addClass('ayc-noscroll');
+        try { render(true); }
+        catch (err) {
+            reportError(`วาดแท็บ ${ui.tab} ไม่ได้`, err);
+            if (ui.tab !== 'global') {
+                ui.tab = 'global';
+                settings().lastTab = 'global';
+                ctx().saveSettingsDebounced();
+                render(true);
+            }
+        }
+    } catch (err) {
+        reportError('เปิดแผงไม่ได้', err);
+    }
 }
 
 function closeOverlay() {
@@ -616,7 +646,8 @@ function renderBody(animate = false) {
     else html = viewList(ui.tab);
     $body.html(`<div class="ayc-view ${animate ? 'ayc-enter' : ''}">${html}<div class="ayc-bottom-pad"></div></div>`);
     if (ui.tab === 'settings') {
-        mountLookEditor($body.find('[data-ref="look"]')[0]);
+        try { mountLookEditor($body.find('[data-ref="look"]')[0]); }
+        catch (err) { reportError('ส่วนแต่งปุ่มลอยพัง', err); }
         $body.find('[data-ref="look-details"]').on('toggle', function () { ui.lookOpen = this.open; });
     }
     if (ui.tab === 'global' || ui.tab === 'chat') makeSortable($body, ui.tab);
@@ -793,7 +824,7 @@ function viewSettings() {
   </div>
   <details class="ayc-lookbox" data-ref="look-details" ${ui.lookOpen ? 'open' : ''}>
     <summary>${icon('fa-paintbrush')} แต่งหน้าตาปุ่ม</summary>
-    ${lookEditorHtml()}
+    ${safeLookHtml()}
   </details>
   <div class="ayc-row ayc-mt">
     <button class="ayc-btn" data-act="launch-resetpos">${icon('fa-crosshairs')} รีเซ็ตตำแหน่ง</button>
