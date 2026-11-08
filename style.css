@@ -483,6 +483,9 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 .ayc-settings-panel .ayc-drawer-btns .menu_button { width: fit-content; display: inline-flex; gap: 6px; align-items: center; }
 .ayc-settings-panel .ayc-vertag { font-weight: 400; opacity: 0.65; margin-left: 4px; }
 .ayc-settings-panel .ayc-verline { font-size: 0.9em; opacity: 0.85; }
+.ayc-settings-panel .ayc-diagbox { margin: 6px 0; }
+.ayc-settings-panel .ayc-diagbox textarea { width: 100%; font: 11px/1.35 ui-monospace, Menlo, monospace; white-space: pre; }
+.ayc-settings-panel .ayc-diagbox .menu_button { width: fit-content; display: inline-flex; gap: 6px; align-items: center; }
 .ayc-settings-panel code { color: var(--SmartThemeQuoteColor); }
 
 /* ── ปุ่มลอย ──

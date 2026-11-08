@@ -10,7 +10,7 @@ import { initLauncher, renderLauncher, updateLauncherBadge, resetLauncherPos, re
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.2.3'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.2.4'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'starters.js', 'launcher.js', 'style.css', 'manifest.json'];
@@ -538,11 +538,83 @@ function goTab(tab) {
 
 let openedAt = 0;
 
+/** บันทึกล่าสุดสำหรับปุ่ม ตรวจปัญหา (บนมือถือดู console ไม่ได้) */
+const diagLog = [];
+function diag(msg) {
+    diagLog.push(`${new Date().toISOString().slice(11, 23)} ${msg}`);
+    if (diagLog.length > 30) diagLog.shift();
+}
+
 /** แจ้ง error บนจอ (บนมือถือดู console ไม่ได้) */
 function reportError(where, err) {
     console.error(LOG, where, err);
+    diag(`ERROR ${where}: ${err?.stack || err}`);
     const msg = String(err?.message ?? err);
     try { toastr.error(`${where}: ${msg}`, 'As you command', { timeOut: 15000, extendedTimeOut: 15000 }); } catch { /* ignore */ }
+}
+
+/** ย่อชื่อ element ให้อ่านง่าย */
+function elName(el) {
+    if (!el) return 'null';
+    const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).slice(0, 3).join('.') : '';
+    return `${el.tagName?.toLowerCase()}${el.id ? '#' + el.id : ''}${cls}`;
+}
+
+/** สไตล์ที่ทำให้ position:fixed ของแผงไม่ยึดหน้าจอ หรือซ่อนแผง */
+function fixedBreakers(el) {
+    const out = [];
+    for (let n = el?.parentElement; n; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        const bad = ['transform', 'perspective', 'filter', 'backdropFilter', 'contain', 'willChange']
+            .filter(k => cs[k] && !['none', 'normal', 'auto', ''].includes(cs[k]))
+            .map(k => `${k}:${cs[k]}`);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') bad.push(`display:${cs.display} visibility:${cs.visibility} opacity:${cs.opacity}`);
+        if (bad.length) out.push(`${elName(n)} {${bad.join('; ')}}`);
+    }
+    return out;
+}
+
+/** ทดลองเปิดแผงแล้ววัดว่าเห็นจริงไหม คืนรายงานเป็นข้อความ */
+async function runDiagnostics() {
+    const lines = [];
+    const add = (k, v) => lines.push(`${k}: ${v}`);
+    add('version', `v${VERSION} (server ${remoteVersion ?? '?'})`);
+    add('ua', navigator.userAgent);
+    const vv = window.visualViewport;
+    add('viewport', `${innerWidth}x${innerHeight} · vv ${vv ? `${Math.round(vv.width)}x${Math.round(vv.height)} @${Math.round(vv.offsetLeft)},${Math.round(vv.offsetTop)} scale ${vv.scale}` : '-'} · dpr ${devicePixelRatio}`);
+    add('scroll', `window ${scrollX},${scrollY} · html ${document.documentElement.scrollTop} · body ${document.body.scrollTop}`);
+    const s = settings();
+    add('settings', `enabled=${s.enabled} lastTab=${s.lastTab} launcher=${s.launcher} scheme=${s.scheme} items=${s.global?.length}`);
+    add('jquery', `${$.fn?.jquery} sortable=${typeof $.fn.sortable}`);
+
+    const before = diagLog.length;
+    openOverlay();
+    await new Promise(r => setTimeout(r, 700));
+    const o = document.getElementById('ayc-overlay');
+    add('overlay', o ? `inDOM=${document.body.contains(o)} parent=${elName(o.parentElement)} class="${o.className}"` : 'ไม่มี');
+    if (o) {
+        const cs = getComputedStyle(o);
+        const r = o.getBoundingClientRect();
+        add('overlay style', `display:${cs.display} visibility:${cs.visibility} opacity:${cs.opacity} position:${cs.position} z:${cs.zIndex} transform:${cs.transform}`);
+        add('overlay rect', `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`);
+        const sh = o.querySelector('.ayc-shell');
+        if (sh) {
+            const rs = sh.getBoundingClientRect(), css = getComputedStyle(sh);
+            add('shell', `${Math.round(rs.left)},${Math.round(rs.top)} ${Math.round(rs.width)}x${Math.round(rs.height)} opacity:${css.opacity} bg:${css.backgroundColor}`);
+        }
+        add('body view', `${o.querySelector('[data-ref="body"]')?.children.length ?? '-'} children, ${o.querySelector('[data-ref="body"]')?.textContent.length ?? 0} chars`);
+        const pts = [[0.5, 0.5], [0.5, 0.15], [0.5, 0.85]].map(([fx, fy]) => {
+            const el = document.elementFromPoint(innerWidth * fx, innerHeight * fy);
+            return `${Math.round(fy * 100)}%=${o.contains(el) ? 'แผง' : elName(el)}`;
+        });
+        add('ที่จุดบนจอ', pts.join(' · '));
+        const br = fixedBreakers(o);
+        add('ตัวบัง fixed', br.length ? br.join(' | ') : 'ไม่มี');
+    }
+    add('log', '');
+    lines.push(...diagLog.slice(Math.max(0, before - 8)).map(x => '  ' + x));
+    closeOverlay();
+    return lines.join('\n');
 }
 
 function safeLookHtml() {
@@ -551,6 +623,7 @@ function safeLookHtml() {
 }
 
 function openOverlay(tab = null) {
+    diag(`open(${tab ?? ''})`);
     try {
         if (!$root) {
             try { buildOverlay(); }
@@ -582,6 +655,7 @@ function openOverlay(tab = null) {
 
 function closeOverlay() {
     if (!$root) return;
+    if (!$root.hasClass('ayc-hidden')) diag(`close ${Date.now() - openedAt}ms หลังเปิด · ${(new Error().stack || '').split('\n').slice(1, 4).map(x => x.trim()).join(' < ')}`);
     $root.find('.ayc-layer').remove();
     $root.addClass('ayc-hidden').attr('aria-hidden', 'true');
     $('html').removeClass('ayc-noscroll');
@@ -1207,9 +1281,14 @@ function mountMenus() {
         <div class="menu_button" data-ayc-open="lib"><i class="fa-solid fa-book-bookmark"></i> คลัง</div>
         <div class="menu_button" data-ayc-open="settings"><i class="fa-solid fa-gear"></i> ตั้งค่า</div>
         <div class="menu_button" data-ayc-look><i class="fa-solid fa-paintbrush"></i> แต่งปุ่มลอย</div>
+        <div class="menu_button" data-ayc-diag title="ทดลองเปิดแผงแล้ววัดว่าเกิดอะไรขึ้น ได้รายงานไว้คัดลอกส่งให้คนแก้"><i class="fa-solid fa-stethoscope"></i> ตรวจปัญหา</div>
         <div class="menu_button" data-ayc-reload title="ดึงไฟล์ของ As you command จากเซิร์ฟเวอร์ใหม่ทั้งหมดแล้วโหลดหน้าใหม่"><i class="fa-solid fa-rotate"></i> โหลดเวอร์ชันล่าสุด</div>
       </div>
       <div class="ayc-verline">ที่รันอยู่: <b>v${VERSION}</b> <span data-ayc-remote></span></div>
+      <div class="ayc-diagbox" data-ayc-diagbox hidden>
+        <textarea class="text_pole" readonly rows="10"></textarea>
+        <div class="menu_button" data-ayc-diagcopy><i class="fa-solid fa-copy"></i> คัดลอกรายงาน</div>
+      </div>
       <small>คลังคำสั่ง OOC ติ๊กเปิด/ปิดได้ คำสั่งที่เปิดจะถูกแทรกทุกเทิร์น บอทจึงไม่ลืม · เปิดแผงจากเมนู 🪄 หรือพิมพ์ <code>/ayc</code></small>
     </div></div>
   </div>
@@ -1229,6 +1308,17 @@ function mountMenus() {
     $panel.on('click', '[data-ayc-open]', function () { openOverlay(String($(this).data('ayc-open'))); });
     $panel.on('click', '[data-ayc-look]', openCustomize);
     $panel.on('click', '[data-ayc-reload]', reloadWithFreshFiles);
+    $panel.on('click', '[data-ayc-diag]', async () => {
+        const $box = $panel.find('[data-ayc-diagbox]');
+        let text;
+        try { text = await runDiagnostics(); } catch (err) { text = `ตรวจไม่สำเร็จ: ${err?.stack || err}\n${diagLog.join('\n')}`; }
+        $box.prop('hidden', false).find('textarea').val(text);
+    });
+    $panel.on('click', '[data-ayc-diagcopy]', async () => {
+        const ta = $panel.find('[data-ayc-diagbox] textarea')[0];
+        try { await navigator.clipboard.writeText(ta.value); toastr.success('คัดลอกรายงานแล้ว', '', { timeOut: 1500 }); }
+        catch { ta.focus(); ta.select(); toastr.info('เลือกข้อความไว้แล้ว กดคัดลอกเองได้เลย'); }
+    });
     $('#extensions_settings2').append($panel);
 }
 
@@ -1283,6 +1373,11 @@ function registerCommands() {
         helpString: 'เปิดแผง As you command',
         callback: () => { openOverlay(); return ''; },
     }));
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'ayc-debug',
+        helpString: 'ตรวจปัญหาแผง As you command แล้วคืนรายงาน (ดูหรือคัดลอกได้จาก Extensions → As you command → ตรวจปัญหา)',
+        callback: async () => runDiagnostics(),
+    }));
     toggleCmd('ayc-on', 'on', 'เปิดคำสั่ง OOC ตามชื่อ เช่น <code>/ayc-on ตอบสั้น</code>');
     toggleCmd('ayc-off', 'off', 'ปิดคำสั่ง OOC ตามชื่อ');
     toggleCmd('ayc-toggle', 'toggle', 'สลับเปิด/ปิดคำสั่ง OOC ตามชื่อ');
@@ -1324,6 +1419,13 @@ function registerCommands() {
 }
 
 // ───────────────────────── boot ─────────────────────────
+
+window.addEventListener('error', e => {
+    if (String(e.filename || '').startsWith(BASE_URL.href)) diag(`window error ${e.message} @${String(e.filename).slice(BASE_URL.href.length)}:${e.lineno}`);
+});
+window.addEventListener('unhandledrejection', e => {
+    if (String(e.reason?.stack || '').includes(BASE_URL.href)) diag(`unhandled ${e.reason?.message ?? e.reason}`);
+});
 
 jQuery(async () => {
     try {
