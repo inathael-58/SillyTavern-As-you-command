@@ -10,7 +10,7 @@ import { initLauncher, renderLauncher, updateLauncherBadge, resetLauncherPos, re
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.2.1'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.2.2'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'starters.js', 'launcher.js', 'style.css', 'manifest.json'];
@@ -393,7 +393,8 @@ function buildOverlay() {
 </div>`);
     $('body').append($root);
 
-    $root.on('click', (e) => { if (e.target === $root[0]) closeOverlay(); });
+    // ไม่ปิดจาก click ที่มาไม่ถึงครึ่งวินาทีหลังเปิด (click ที่ค้างจากการแตะ/กดค้างที่เปิดแผงขึ้นมา)
+    $root.on('click', (e) => { if (e.target === $root[0] && Date.now() - openedAt > 450) closeOverlay(); });
     $root.on('click', '[data-tab]', function () { goTab(String($(this).data('tab'))); });
     $root.on('input', '[data-ref="search"]', function () {
         ui.query = String($(this).val() || '');
@@ -535,8 +536,11 @@ function goTab(tab) {
     render(true);
 }
 
+let openedAt = 0;
+
 function openOverlay(tab = null) {
     if (!$root) buildOverlay();
+    openedAt = Date.now();
     ui.tab = tab || settings().lastTab || 'global';
     ui.query = '';
     $root.find('[data-ref="search"]').val('');
