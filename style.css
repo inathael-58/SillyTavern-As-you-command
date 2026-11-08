@@ -660,6 +660,25 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-select option { color: #111; background: #fff; }
 #ayc-overlay .ayc-btn-sm { min-height: 34px; padding: 4px 10px; font-size: 13px; }
 #ayc-overlay .ayc-range { width: 100%; margin: 0; accent-color: var(--ayc-accent); }
+#ayc-overlay .ayc-look-slider { display: flex; gap: 10px; align-items: center; min-width: 0; }
+#ayc-overlay .ayc-look-slider .ayc-range { flex: 1; min-width: 0; }
+/* ช่องตัวเลข: เขียนทับสไตล์ input ของธีมด้วย !important ไม่งั้นธีมบางตัววาดกล่องซ้อน */
+#ayc-overlay .ayc-valbox {
+    flex: none; display: inline-flex; align-items: center; gap: 2px; margin: 0;
+    height: 34px; padding: 0 9px 0 6px; border-radius: 9px;
+    border: 1px solid var(--ayc-border); background: var(--ayc-surface2);
+    font-variant-numeric: tabular-nums; cursor: text;
+}
+#ayc-overlay .ayc-valbox:focus-within { border-color: var(--ayc-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ayc-accent) 22%, transparent); }
+#ayc-overlay .ayc-valbox input {
+    -webkit-appearance: none !important; appearance: textfield !important; -moz-appearance: textfield !important;
+    width: 3.2ch !important; min-width: 0 !important; height: 30px !important; min-height: 0 !important;
+    margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; outline: none !important;
+    box-shadow: none !important; background: transparent !important; color: var(--ayc-fg) !important;
+    font: inherit !important; font-size: 16px !important; font-weight: 700 !important; text-align: right !important;
+}
+#ayc-overlay .ayc-valbox input::-webkit-inner-spin-button, #ayc-overlay .ayc-valbox input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#ayc-overlay .ayc-valbox i { font-style: normal; font-size: 12px; color: var(--ayc-dim); }
 #ayc-overlay .ayc-look-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 4px; font-size: 13.5px; }
 #ayc-overlay .ayc-look-check { display: inline-flex; gap: 7px; align-items: center; margin: 0; cursor: pointer; }
 #ayc-overlay .ayc-look-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ayc-accent); }
