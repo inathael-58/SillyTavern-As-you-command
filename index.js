@@ -1,11 +1,18 @@
 // As you command — คลังคำสั่ง OOC แบบติ๊กเปิด/ปิด สำหรับ SillyTavern
 // คำสั่งที่เปิดไว้จะถูก inject ใหม่ทุกเทิร์นที่ความลึกคงที่ จึงไม่ถูกดันหายไปกับประวัติแชท
 // เก็บได้ 2 ขอบเขต: ทุกแชท (extension settings) และเฉพาะแชทนี้ (chat metadata)
+//
+// หน้าตา: แอปเต็มจอบนมือถือ มีแถบเมนูล่าง (ทุกแชท / แชทนี้ / คลัง / ตั้งค่า) และเป็นหน้าต่างกลางจอบนจอกว้าง
+// สีตามธีม ST หรือเลือกสว่าง/มืดเองได้ในหน้า ตั้งค่า
 
 import { STARTERS, CATEGORIES } from './starters.js';
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
+const VERSION = '1.1.0'; // ให้ตรงกับ manifest.json เสมอ
+const BASE_URL = new URL('.', import.meta.url);
+/** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
+const FILES = ['index.js', 'starters.js', 'style.css', 'manifest.json'];
 
 const POS = { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 };
 const ROLE = { SYSTEM: 0, USER: 1, ASSISTANT: 2 };
@@ -20,6 +27,8 @@ const DEFAULTS = {
     role: ROLE.SYSTEM,
     template: DEFAULT_TEMPLATE,
     skipQuiet: true,
+    onceNotice: true,
+    scheme: 'theme', // theme | light | dark
     global: [],
     myLibrary: [],
     seeded: false,
@@ -71,27 +80,11 @@ function save(scope) {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 function fromStarter(st, enabled = true) {
-    return {
-        id: uid(),
-        title: st.title,
-        text: st.text,
-        enabled,
-        once: !!st.once,
-        group: st.group || '',
-        src: 's:' + st.id,
-    };
+    return { id: uid(), title: st.title, text: st.text, enabled, once: !!st.once, group: st.group || '', src: 's:' + st.id };
 }
 
 function fromMine(t, enabled = true) {
-    return {
-        id: uid(),
-        title: t.title,
-        text: t.text,
-        enabled,
-        once: !!t.once,
-        group: t.group || '',
-        src: 'm:' + t.id,
-    };
+    return { id: uid(), title: t.title, text: t.text, enabled, once: !!t.once, group: t.group || '', src: 'm:' + t.id };
 }
 
 function libEntries() {
@@ -147,13 +140,44 @@ function onMessageReceived() {
     if (!pendingOnce) return;
     if (pendingOnce.chatId !== ctx().getCurrentChatId()) { pendingOnce = null; return; }
     const touched = new Set();
+    const used = [];
     for (const { scope, id } of pendingOnce.refs) {
         const it = list(scope).find(x => x.id === id);
-        if (it && it.enabled) { it.enabled = false; touched.add(scope); }
+        if (it && it.enabled) {
+            it.enabled = false;
+            touched.add(scope);
+            used.push({ scope, id, title: it.title || '(ไม่มีชื่อ)' });
+        }
     }
+    const chatId = pendingOnce.chatId;
     pendingOnce = null;
     touched.forEach(save);
     if (touched.size) { applyInjection(); refresh(); }
+    if (used.length && settings().onceNotice) showOnceNotice(used, chatId);
+}
+
+/** ป๊อบอัพเล็กๆ บอกว่าคำสั่งแบบใช้ครั้งเดียวมีผลแล้วและถูกปิดให้แล้ว แตะเพื่อเปิดกลับมา (เช่น ก่อนจะ swipe) */
+function showOnceNotice(used, chatId) {
+    const names = used.map(u => `“${esc(u.title)}”`).join(', ');
+    toastr.info(
+        `${names}<div class="ayc-toast-sub">ปิดให้แล้ว · ถ้าจะ swipe หรือใช้อีก แตะที่นี่เพื่อเปิดใหม่</div>`,
+        '⚡ คำสั่งใช้ครั้งเดียวมีผลแล้ว',
+        {
+            timeOut: 7000, extendedTimeOut: 4000, closeButton: true, escapeHtml: false, progressBar: true,
+            onclick: () => reEnableOnce(used, chatId),
+        },
+    );
+}
+
+function reEnableOnce(used, chatId) {
+    if (chatId !== ctx().getCurrentChatId()) { toastr.warning('ย้ายไปแชทอื่นแล้ว เปิดใหม่ในแผงได้เลย'); return; }
+    let n = 0;
+    for (const { scope, id } of used) {
+        const it = list(scope).find(x => x.id === id);
+        if (it && !it.enabled) { setEnabled(scope, id, true); n++; }
+    }
+    refresh();
+    if (n) toastr.success('กด swipe หรือส่งข้อความต่อได้เลย', `⚡ เปิดอีกครั้งแล้ว ${n} คำสั่ง`, { timeOut: 2200 });
 }
 
 // ───────────────────────── mutations ─────────────────────────
@@ -217,13 +241,13 @@ function moveItem(scope, id) {
 // ───────────────────────── UI helpers ─────────────────────────
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const icon = (name, extra = '') => `<i class="fa-solid ${name} ${extra}" aria-hidden="true"></i>`;
 
 const ui = {
-    tab: 'global',
+    tab: 'global', // global | chat | lib | settings
     cat: 'all',
     query: '',
     expanded: new Set(),
-    editing: null, // { mode:'item'|'lib', scope, id|null }
 };
 
 let $root = null;
@@ -239,95 +263,159 @@ function matches(obj) {
     return [obj.title, obj.text, obj.desc, obj.group].some(v => String(v || '').toLowerCase().includes(q));
 }
 
-function switchHtml(checked, attrs = '') {
-    return `<label class="ayc-switch" ${attrs}><input type="checkbox" ${checked ? 'checked' : ''}><span class="ayc-slider"></span></label>`;
+function switchHtml(checked, attrs = '', label = '') {
+    return `<label class="ayc-switch" ${label ? `title="${esc(label)}"` : ''}><input type="checkbox" ${attrs} ${checked ? 'checked' : ''}><span class="ayc-knob"></span>${label ? `<span class="ayc-sr">${esc(label)}</span>` : ''}</label>`;
+}
+
+function whereText(s = settings()) {
+    return Number(s.position) === POS.IN_CHAT ? `ในแชท ความลึก ${s.depth}`
+        : Number(s.position) === POS.IN_PROMPT ? 'ต่อท้าย prompt หลัก' : 'ก่อน prompt หลัก';
+}
+
+// ───────────────────────── layers: sheets & dialogs (อยู่เหนือแผง หน้าตาเดียวกับแผง) ─────────────────────────
+
+function openLayer(inner, kind = 'sheet') {
+    const $l = $(`<div class="ayc-layer ayc-layer-${kind}"><div class="ayc-scrim" data-x></div>${inner}</div>`);
+    $root.find('.ayc-shell').append($l);
+    const close = () => {
+        if ($l.hasClass('ayc-closing')) return;
+        $l.addClass('ayc-closing');
+        setTimeout(() => $l.remove(), 160);
+    };
+    $l.data('close', close);
+    $l.on('click', '[data-x]', close);
+    return { $l, close };
+}
+
+function topLayer() {
+    const $ls = $root?.find('.ayc-layer:not(.ayc-closing)');
+    return $ls?.length ? $ls.last() : null;
+}
+
+/** เมนูแบบแผ่นล่าง คืนค่าที่เลือก หรือ null */
+function actionSheet({ title = '', sub = '', items }) {
+    return new Promise(resolve => {
+        const { $l, close } = openLayer(`
+<div class="ayc-sheet" role="menu">
+  <div class="ayc-grab"></div>
+  ${title ? `<div class="ayc-sheet-title">${esc(title)}</div>` : ''}
+  ${sub ? `<div class="ayc-sheet-sub">${esc(sub)}</div>` : ''}
+  <div class="ayc-sheet-items">${items.map((it, i) => it === '-' ? '<div class="ayc-sep"></div>' : `
+    <button class="ayc-sheet-item ${it.danger ? 'ayc-danger' : ''}" data-i="${i}" ${it.disabled ? 'disabled' : ''} role="menuitem">
+      ${icon(it.icon || 'fa-circle')}<span class="ayc-grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>
+    </button>`).join('')}</div>
+  <button class="ayc-sheet-cancel" data-x>ยกเลิก</button>
+</div>`);
+        let done = false;
+        const finish = v => { if (done) return; done = true; close(); resolve(v); };
+        $l.off('click').on('click', '[data-x]', () => finish(null));
+        $l.on('click', '[data-i]', function () { if (!this.disabled) finish(items[Number(this.dataset.i)].value); });
+        $l.data('close', () => finish(null));
+    });
+}
+
+/** กล่องยืนยัน คืน true/false */
+function confirmBox({ title, text = '', ok = 'ตกลง', danger = false }) {
+    return new Promise(resolve => {
+        const { $l, close } = openLayer(`
+<div class="ayc-dialog" role="alertdialog">
+  <div class="ayc-dialog-title">${esc(title)}</div>
+  ${text ? `<div class="ayc-dialog-text">${esc(text)}</div>` : ''}
+  <div class="ayc-dialog-btns"><button class="ayc-btn" data-x>ยกเลิก</button><button class="ayc-btn ${danger ? 'ayc-btn-danger' : 'ayc-primary'}" data-ok>${esc(ok)}</button></div>
+</div>`, 'dialog');
+        let done = false;
+        const finish = v => { if (done) return; done = true; close(); resolve(v); };
+        $l.off('click').on('click', '[data-x]', () => finish(false));
+        $l.on('click', '[data-ok]', () => finish(true));
+        $l.data('close', () => finish(false));
+        setTimeout(() => $l.find('[data-ok]').trigger('focus'), 30);
+    });
+}
+
+function formSheet(title, iconName, body, foot) {
+    return openLayer(`
+<div class="ayc-sheet ayc-sheet-form" role="dialog" aria-label="${esc(title)}">
+  <div class="ayc-grab"></div>
+  <div class="ayc-sheet-head"><div class="ayc-sheet-title">${icon(iconName)}${esc(title)}</div>
+    <button class="ayc-icon" data-x aria-label="ปิด">${icon('fa-xmark')}</button></div>
+  <div class="ayc-sheet-body">${body}</div>
+  ${foot ? `<div class="ayc-sheet-foot">${foot}</div>` : ''}
+</div>`);
 }
 
 // ───────────────────────── overlay ─────────────────────────
+
+const NAV = [
+    ['global', 'fa-earth-asia', 'ทุกแชท'],
+    ['chat', 'fa-comment-dots', 'แชทนี้'],
+    ['lib', 'fa-book-bookmark', 'คลัง'],
+    ['settings', 'fa-gear', 'ตั้งค่า'],
+];
 
 function buildOverlay() {
     $root = $(`
 <div id="ayc-overlay" class="ayc-hidden" aria-hidden="true">
   <div class="ayc-shell" role="dialog" aria-label="As you command">
     <header class="ayc-head">
-      <div class="ayc-brand">
-        <div class="ayc-seal"><i class="fa-solid fa-scroll"></i></div>
-        <div class="ayc-brand-text">
-          <div class="ayc-title">As you command</div>
-          <div class="ayc-sub" data-ref="status"></div>
-        </div>
+      <div class="ayc-logo">${icon('fa-scroll')}</div>
+      <div class="ayc-headtext">
+        <div class="ayc-htitle">As you command</div>
+        <div class="ayc-hsub" data-ref="status"></div>
       </div>
-      <div class="ayc-head-actions">
-        <span class="ayc-master" title="เปิด/ปิดทั้งหมด">${switchHtml(true, 'data-act="master"')}</span>
-        <button class="ayc-icon-btn" data-act="settings" title="ตั้งค่า"><i class="fa-solid fa-sliders"></i></button>
-        <button class="ayc-icon-btn" data-act="close" title="ปิด"><i class="fa-solid fa-xmark"></i></button>
+      <div class="ayc-hactions">
+        <span class="ayc-master">${switchHtml(true, 'data-act="master"', 'เปิด/ปิดทั้งหมด')}</span>
+        <button class="ayc-icon" data-act="preview" title="ดูสิ่งที่โมเดลจะเห็น" aria-label="ดู prompt">${icon('fa-eye')}</button>
+        <button class="ayc-icon" data-act="close" title="ปิด" aria-label="ปิด">${icon('fa-xmark')}</button>
       </div>
     </header>
 
-    <nav class="ayc-tabs" role="tablist">
-      <button class="ayc-tab" data-tab="global"><i class="fa-solid fa-earth-asia"></i><span>ทุกแชท</span><b class="ayc-count" data-ref="cnt-global"></b></button>
-      <button class="ayc-tab" data-tab="chat"><i class="fa-solid fa-comment-dots"></i><span>แชทนี้</span><b class="ayc-count" data-ref="cnt-chat"></b></button>
-      <button class="ayc-tab" data-tab="lib"><i class="fa-solid fa-book-bookmark"></i><span>คลัง</span></button>
-    </nav>
-
-    <div class="ayc-toolbar">
-      <div class="ayc-search">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="search" data-ref="search" placeholder="ค้นหาคำสั่ง…" autocomplete="off">
+    <div class="ayc-toolbar" data-ref="toolbar">
+      <div class="ayc-toolrow">
+        <div class="ayc-search">${icon('fa-magnifying-glass')}<input class="ayc-input" type="search" data-ref="search" placeholder="ค้นหาคำสั่ง…" autocomplete="off" enterkeyhint="search"></div>
+        <button class="ayc-btn ayc-pillbtn" data-act="all-off" title="ปิดทุกคำสั่งในแท็บนี้">${icon('fa-power-off')}<span>ปิดหมด</span></button>
       </div>
-      <div class="ayc-chips" data-ref="chips"></div>
+      <div class="ayc-chiprow" data-ref="chips"></div>
     </div>
 
-    <div class="ayc-body" data-ref="body"></div>
+    <main class="ayc-body" data-ref="body"></main>
 
-    <footer class="ayc-foot">
-      <button class="ayc-btn ayc-btn-primary" data-act="new"><i class="fa-solid fa-plus"></i><span data-ref="new-label">เพิ่มคำสั่ง</span></button>
-      <button class="ayc-btn" data-act="preview"><i class="fa-solid fa-eye"></i><span>ดู prompt</span></button>
-      <button class="ayc-btn ayc-btn-ghost" data-act="all-off" title="ปิดทุกคำสั่งในแท็บนี้"><i class="fa-solid fa-power-off"></i></button>
-    </footer>
+    <button class="ayc-fab" data-act="new" title="เพิ่มคำสั่ง" aria-label="เพิ่มคำสั่ง">${icon('fa-plus')}</button>
 
-    <div class="ayc-sheet ayc-hidden" data-ref="sheet">
-      <div class="ayc-sheet-card" data-ref="sheet-card"></div>
-    </div>
+    <nav class="ayc-nav">${NAV.map(([t, ic, label]) => `
+      <button class="ayc-navbtn" data-tab="${t}">${icon(ic)}<span>${label}</span><b class="ayc-navbadge" data-ref="cnt-${t}"></b></button>`).join('')}
+    </nav>
   </div>
 </div>`);
     $('body').append($root);
 
     $root.on('click', (e) => { if (e.target === $root[0]) closeOverlay(); });
-    $root.on('click', '[data-tab]', function () {
-        ui.tab = $(this).data('tab');
-        ui.cat = 'all';
-        settings().lastTab = ui.tab;
-        ctx().saveSettingsDebounced();
-        render();
-    });
+    $root.on('click', '[data-tab]', function () { goTab(String($(this).data('tab'))); });
     $root.on('input', '[data-ref="search"]', function () {
         ui.query = String($(this).val() || '');
         renderBody();
     });
     $root.on('click', '[data-cat]', function () {
-        ui.cat = $(this).data('cat');
+        ui.cat = String($(this).data('cat'));
         renderChips();
         renderBody();
     });
 
     // ── main actions ──
-    $root.on('change', '[data-act="master"] input', function () {
+    $root.on('change', '[data-act="master"]', function () {
         settings().enabled = this.checked;
         ctx().saveSettingsDebounced();
         applyInjection();
-        renderStatus();
-        $root.find('.ayc-shell').toggleClass('ayc-off', !this.checked);
+        syncDrawer();
+        render();
     });
     $root.on('click', '[data-act="close"]', closeOverlay);
-    $root.on('click', '[data-act="settings"]', openSettingsSheet);
     $root.on('click', '[data-act="preview"]', openPreviewSheet);
     $root.on('click', '[data-act="new"]', () => {
         if (ui.tab === 'lib') openEditor({ mode: 'lib', id: null });
-        else openEditor({ mode: 'item', scope: ui.tab, id: null });
+        else openEditor({ mode: 'item', scope: ui.tab === 'chat' ? 'chat' : 'global', id: null });
     });
     $root.on('click', '[data-act="all-off"]', () => {
-        const scopes = ui.tab === 'lib' ? ['global', 'chat'] : [ui.tab];
+        const scopes = [ui.tab];
         let n = 0;
         for (const sc of scopes) {
             for (const it of list(sc)) if (it.enabled) { it.enabled = false; n++; }
@@ -338,44 +426,58 @@ function buildOverlay() {
         toastr.info(n ? `ปิด ${n} คำสั่ง` : 'ไม่มีคำสั่งที่เปิดอยู่', '', { timeOut: 1600 });
     });
 
-    // ── item card actions ──
+    // ── item cards ──
     $root.on('change', '.ayc-card .ayc-switch input', function () {
         const $c = $(this).closest('.ayc-card');
-        setEnabled($c.data('scope'), $c.data('id'), this.checked);
+        setEnabled(String($c.data('scope')), String($c.data('id')), this.checked);
         render();
     });
     $root.on('click', '.ayc-card [data-act="expand"]', function () {
-        const id = $(this).closest('[data-id]').data('id');
+        const id = String($(this).closest('[data-id]').data('id'));
         ui.expanded.has(id) ? ui.expanded.delete(id) : ui.expanded.add(id);
         $(this).closest('[data-id]').toggleClass('ayc-expanded');
     });
-    $root.on('click', '.ayc-card [data-act="edit"]', function () {
+    $root.on('click', '.ayc-card [data-act="more"]', async function () {
         const $c = $(this).closest('.ayc-card');
-        openEditor({ mode: 'item', scope: $c.data('scope'), id: $c.data('id') });
-    });
-    $root.on('click', '.ayc-card [data-act="move"]', function () {
-        const $c = $(this).closest('.ayc-card');
-        moveItem($c.data('scope'), $c.data('id'));
-        render();
-    });
-    $root.on('click', '.ayc-card [data-act="delete"]', async function () {
-        const $c = $(this).closest('.ayc-card');
-        const it = list($c.data('scope')).find(x => x.id === $c.data('id'));
+        const scope = String($c.data('scope')), id = String($c.data('id'));
+        const it = list(scope).find(x => x.id === id);
         if (!it) return;
-        if (!(await confirmBox(`ลบคำสั่ง "${it.title}"?`))) return;
-        removeItem($c.data('scope'), it.id);
-        render();
+        const choice = await actionSheet({
+            title: it.title || '(ไม่มีชื่อ)',
+            sub: scope === 'global' ? 'อยู่ใน ทุกแชท' : 'อยู่ใน แชทนี้',
+            items: [
+                { value: 'edit', label: 'แก้ไข', icon: 'fa-pen' },
+                { value: 'move', label: scope === 'global' ? 'ย้ายไป แชทนี้' : 'ย้ายไป ทุกแชท', icon: scope === 'global' ? 'fa-comment-dots' : 'fa-earth-asia', disabled: scope === 'global' && !hasChat() },
+                { value: 'lib', label: 'บันทึกเป็นแม่แบบในคลัง', icon: 'fa-book-bookmark', hint: 'ไว้ใช้กับแชทอื่น' },
+                '-',
+                { value: 'delete', label: 'ลบ', icon: 'fa-trash-can', danger: true },
+            ],
+        });
+        if (choice === 'edit') openEditor({ mode: 'item', scope, id });
+        else if (choice === 'move') { moveItem(scope, id); render(); }
+        else if (choice === 'lib') {
+            const s = settings();
+            const libId = uid();
+            s.myLibrary.unshift({ id: libId, title: it.title, text: it.text, once: !!it.once, group: it.group || '' });
+            it.src = 'm:' + libId;
+            save('lib'); save(scope);
+            toastr.success(`เก็บ "${it.title}" ไว้ในคลังแล้ว`, '', { timeOut: 1600 });
+        } else if (choice === 'delete') {
+            if (!(await confirmBox({ title: `ลบคำสั่ง "${it.title}"?`, ok: 'ลบ', danger: true }))) return;
+            removeItem(scope, id);
+            render();
+        }
     });
 
-    // ── library actions ──
-    $root.on('click', '.ayc-lib-card [data-act="expand"]', function () {
-        const key = $(this).closest('[data-key]').data('key');
+    // ── library ──
+    $root.on('click', '.ayc-lib [data-act="expand"]', function () {
+        const key = String($(this).closest('[data-key]').data('key'));
         ui.expanded.has(key) ? ui.expanded.delete(key) : ui.expanded.add(key);
         $(this).closest('[data-key]').toggleClass('ayc-expanded');
     });
-    $root.on('click', '.ayc-lib-card [data-add]', function () {
-        const scope = $(this).data('add');
-        const key = $(this).closest('[data-key]').data('key');
+    $root.on('click', '.ayc-lib [data-add]', function () {
+        const scope = String($(this).data('add'));
+        const key = String($(this).closest('[data-key]').data('key'));
         const entry = libEntries().find(x => x.key === key);
         if (!entry) return;
         const existing = list(scope).find(x => x.src === key);
@@ -388,46 +490,59 @@ function buildOverlay() {
         }
         render();
     });
-    $root.on('click', '.ayc-lib-card [data-act="lib-edit"]', function () {
-        const key = String($(this).closest('[data-key]').data('key'));
-        openEditor({ mode: 'lib', id: key.slice(2) });
-    });
-    $root.on('click', '.ayc-lib-card [data-act="lib-delete"]', async function () {
+    $root.on('click', '.ayc-lib [data-act="lib-more"]', async function () {
         const key = String($(this).closest('[data-key]').data('key'));
         const s = settings();
         const t = s.myLibrary.find(x => 'm:' + x.id === key);
-        if (!t || !(await confirmBox(`ลบ "${t.title}" ออกจากคลัง? (คำสั่งที่เพิ่มเข้าลิสต์ไปแล้วไม่หาย)`))) return;
-        s.myLibrary = s.myLibrary.filter(x => x !== t);
-        save('lib');
-        render();
+        if (!t) return;
+        const choice = await actionSheet({
+            title: t.title, sub: 'แม่แบบของฉัน',
+            items: [{ value: 'edit', label: 'แก้แม่แบบ', icon: 'fa-pen' }, '-', { value: 'delete', label: 'ลบออกจากคลัง', icon: 'fa-trash-can', danger: true, hint: 'คำสั่งที่เพิ่มเข้าลิสต์ไปแล้วไม่หาย' }],
+        });
+        if (choice === 'edit') openEditor({ mode: 'lib', id: t.id });
+        else if (choice === 'delete') {
+            if (!(await confirmBox({ title: `ลบ "${t.title}" ออกจากคลัง?`, text: 'คำสั่งที่เพิ่มเข้าลิสต์ไปแล้วจะยังอยู่', ok: 'ลบ', danger: true }))) return;
+            s.myLibrary = s.myLibrary.filter(x => x !== t);
+            save('lib');
+            render();
+        }
     });
 
-    // ── sheet ──
-    $root.on('click', '[data-ref="sheet"]', function (e) { if (e.target === this) closeSheet(); });
-    $root.on('click', '[data-act="sheet-close"]', closeSheet);
+    bindSettingsView();
 
     $(document).on('keydown.ayc', (e) => {
-        if (e.key !== 'Escape' || $root.hasClass('ayc-hidden')) return;
-        if (!$root.find('[data-ref="sheet"]').hasClass('ayc-hidden')) closeSheet();
+        if (e.key !== 'Escape' || !$root || $root.hasClass('ayc-hidden')) return;
+        const $l = topLayer();
+        if ($l) { e.stopPropagation(); $l.data('close')?.(); }
         else closeOverlay();
     });
 }
 
-function openOverlay() {
+function goTab(tab) {
+    ui.tab = tab;
+    ui.cat = 'all';
+    settings().lastTab = tab;
+    ctx().saveSettingsDebounced();
+    $root.find('.ayc-body').scrollTop(0);
+    render(true);
+}
+
+function openOverlay(tab = null) {
     if (!$root) buildOverlay();
-    ui.tab = settings().lastTab || 'global';
+    ui.tab = tab || settings().lastTab || 'global';
     ui.query = '';
     $root.find('[data-ref="search"]').val('');
-    closeSheet();
-    render();
+    $root.find('.ayc-layer').remove();
+    render(true);
     $root.removeClass('ayc-hidden').attr('aria-hidden', 'false');
-    $('body').addClass('ayc-open');
+    $('html').addClass('ayc-noscroll');
 }
 
 function closeOverlay() {
     if (!$root) return;
+    $root.find('.ayc-layer').remove();
     $root.addClass('ayc-hidden').attr('aria-hidden', 'true');
-    $('body').removeClass('ayc-open');
+    $('html').removeClass('ayc-noscroll');
 }
 
 function refresh() {
@@ -437,19 +552,24 @@ function refresh() {
 
 // ───────────────────────── render ─────────────────────────
 
-function render() {
+function render(animate = false) {
     if (!$root) return;
     const s = settings();
-    $root.find('.ayc-tab').each(function () {
-        $(this).toggleClass('ayc-active', $(this).data('tab') === ui.tab);
+    $root.attr('data-scheme', s.scheme || 'theme').attr('data-view', ui.tab);
+    $root.find('.ayc-navbtn').each(function () {
+        $(this).toggleClass('ayc-on', $(this).data('tab') === ui.tab);
     });
-    $root.find('[data-act="master"] input').prop('checked', s.enabled);
+    $root.find('[data-act="master"]').prop('checked', s.enabled);
     $root.find('.ayc-shell').toggleClass('ayc-off', !s.enabled);
-    $root.find('[data-ref="new-label"]').text(ui.tab === 'lib' ? 'สร้างแม่แบบ' : 'เพิ่มคำสั่ง');
-    $root.find('[data-act="all-off"]').toggle(ui.tab !== 'lib');
+    const listTab = ui.tab === 'global' || ui.tab === 'chat';
+    $root.find('[data-ref="toolbar"]').toggle(ui.tab !== 'settings');
+    $root.find('[data-act="all-off"]').toggle(listTab && list(ui.tab).some(x => x.enabled));
+    $root.find('[data-act="new"]').toggle(ui.tab !== 'settings' && !(ui.tab === 'chat' && !hasChat()))
+        .attr('title', ui.tab === 'lib' ? 'สร้างแม่แบบ' : 'เพิ่มคำสั่ง');
+    $root.find('[data-ref="search"]').attr('placeholder', ui.tab === 'lib' ? 'ค้นหาในคลัง…' : 'ค้นหาคำสั่ง…');
     renderStatus();
     renderChips();
-    renderBody();
+    renderBody(animate);
     updateWandBadge();
 }
 
@@ -457,168 +577,280 @@ function renderStatus() {
     const s = settings();
     const g = list('global'), c = list('chat');
     const gOn = g.filter(x => x.enabled).length, cOn = c.filter(x => x.enabled).length;
-    $root.find('[data-ref="cnt-global"]').text(gOn ? `${gOn}/${g.length}` : g.length || '').toggleClass('ayc-lit', gOn > 0);
-    $root.find('[data-ref="cnt-chat"]').text(cOn ? `${cOn}/${c.length}` : c.length || '').toggleClass('ayc-lit', cOn > 0);
-    const where = Number(s.position) === POS.IN_CHAT ? `ความลึก ${s.depth}` : (Number(s.position) === POS.IN_PROMPT ? 'หลัง prompt หลัก' : 'ก่อน prompt หลัก');
-    const txt = !s.enabled ? 'ปิดอยู่ — ไม่มีอะไรถูกส่งให้โมเดล'
-        : (gOn + cOn) ? `กำลังสั่ง ${gOn + cOn} ข้อ · ${where}` : 'ยังไม่ได้เปิดคำสั่งไหน';
-    $root.find('[data-ref="status"]').text(txt);
+    const badge = (n) => n ? String(n) : '';
+    $root.find('[data-ref="cnt-global"]').text(badge(gOn));
+    $root.find('[data-ref="cnt-chat"]').text(badge(cOn));
+    $root.find('[data-ref="cnt-settings"]').text(isStale() ? '!' : '').toggleClass('ayc-warnbadge', isStale());
+    const txt = !s.enabled ? 'ปิดอยู่ · ไม่มีอะไรถูกส่งให้โมเดล'
+        : (gOn + cOn) ? `กำลังสั่ง ${gOn + cOn} ข้อ · ${whereText(s)}` : 'ยังไม่ได้เปิดคำสั่งไหน';
+    $root.find('[data-ref="status"]').html(`<span class="ayc-dot ${s.enabled && (gOn + cOn) ? 'ayc-dot-on' : ''}"></span><span>${esc(txt)}</span>`);
 }
 
 function renderChips() {
     const $chips = $root.find('[data-ref="chips"]');
     if (ui.tab !== 'lib') { $chips.empty().hide(); return; }
     const hasMine = settings().myLibrary.length > 0;
+    const all = libEntries();
+    const count = id => id === 'all' ? all.length : all.filter(e => e.cat === id).length;
     const cats = [{ id: 'all', label: 'ทั้งหมด', icon: 'fa-layer-group' }, ...(hasMine ? [{ id: 'mine', ...catLabel('mine') }] : []), ...CATEGORIES];
-    $chips.html(cats.map(c => `<button class="ayc-chip-btn ${ui.cat === c.id ? 'ayc-active' : ''}" data-cat="${c.id}"><i class="fa-solid ${c.icon}"></i>${esc(c.label)}</button>`).join('')).show();
+    $chips.html(cats.map(c => `<button class="ayc-fchip ${ui.cat === c.id ? 'ayc-on' : ''}" data-cat="${c.id}">${icon(c.icon)}${esc(c.label)}<b>${count(c.id)}</b></button>`).join('')).show();
 }
 
-function renderBody() {
+function renderBody(animate = false) {
     const $body = $root.find('[data-ref="body"]');
-    if (ui.tab === 'lib') { $body.html(renderLibrary()); return; }
+    let html;
+    if (ui.tab === 'settings') html = viewSettings();
+    else if (ui.tab === 'lib') html = viewLibrary();
+    else html = viewList(ui.tab);
+    $body.html(`<div class="ayc-view ${animate ? 'ayc-enter' : ''}">${html}<div class="ayc-bottom-pad"></div></div>`);
+    if (ui.tab === 'global' || ui.tab === 'chat') makeSortable($body, ui.tab);
+}
 
-    if (ui.tab === 'chat' && !hasChat()) {
-        $body.html(emptyState('fa-comment-slash', 'ยังไม่ได้เปิดแชท', 'เปิดแชทก่อน แล้วคำสั่งในแท็บนี้จะผูกกับแชทนั้นแชทเดียว'));
-        return;
+function viewList(scope) {
+    if (scope === 'chat' && !hasChat()) {
+        return emptyState('fa-comment-slash', 'ยังไม่ได้เปิดแชท', 'เปิดแชทก่อน แล้วคำสั่งในแท็บนี้จะผูกกับแชทนั้นแชทเดียว');
     }
-
-    const arr = list(ui.tab);
+    const arr = list(scope);
     if (!arr.length) {
-        $body.html(ui.tab === 'chat'
+        return scope === 'chat'
             ? emptyState('fa-feather', 'แชทนี้ยังไม่มีคำสั่งเฉพาะ', 'ใช้สำหรับคำสั่งที่อยากให้มีแค่ในเรื่องนี้ เช่น ทิศทางเนื้อเรื่อง หรือกฎของโลกในบอทนี้', true)
-            : emptyState('fa-scroll', 'ลิสต์ว่าง', 'เลือกคำสั่งสำเร็จรูปจากคลัง หรือเขียนเองได้เลย', true));
-        return;
+            : emptyState('fa-scroll', 'ลิสต์ว่าง', 'เลือกคำสั่งสำเร็จรูปจากคลัง หรือกดปุ่ม + เพื่อเขียนเอง', true);
     }
     const shown = arr.filter(matches);
-    if (!shown.length) { $body.html(emptyState('fa-magnifying-glass', 'ไม่พบคำสั่งที่ค้นหา', '')); return; }
+    if (!shown.length) return emptyState('fa-magnifying-glass', 'ไม่พบคำสั่งที่ค้นหา', '');
+    const on = arr.filter(x => x.enabled).length;
+    const head = `<h3 class="ayc-h">${icon(scope === 'global' ? 'fa-earth-asia' : 'fa-comment-dots')} ${scope === 'global' ? 'ใช้กับทุกแชท' : 'เฉพาะแชทนี้'}
+      <small>เปิด ${on} จาก ${arr.length}${!ui.query && arr.length > 1 ? ' · ลาก ⠿ เพื่อเรียง' : ''}</small></h3>`;
+    return head + `<div class="ayc-list" data-ref="sortable">${shown.map(it => itemCard(scope, it)).join('')}</div>`;
+}
 
-    $body.html(`<div class="ayc-list" data-ref="sortable">${shown.map(it => itemCard(ui.tab, it)).join('')}</div>`);
+function makeSortable($body, scope) {
+    if (ui.query || typeof $.fn.sortable !== 'function') return;
+    $body.find('[data-ref="sortable"]').sortable({
+        handle: '.ayc-grip',
+        axis: 'y',
+        tolerance: 'pointer',
+        placeholder: 'ayc-card-placeholder',
+        update: function () {
+            const order = $(this).children('.ayc-card').map((_, el) => String($(el).data('id'))).get();
+            const cur = list(scope);
+            cur.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+            save(scope);
+            applyInjection();
+        },
+    });
+}
 
-    if (!ui.query && typeof $.fn.sortable === 'function') {
-        const scope = ui.tab;
-        $body.find('[data-ref="sortable"]').sortable({
-            handle: '.ayc-grip',
-            axis: 'y',
-            tolerance: 'pointer',
-            placeholder: 'ayc-card-placeholder',
-            update: function () {
-                const order = $(this).children('.ayc-card').map((_, el) => $(el).data('id')).get();
-                const cur = list(scope);
-                cur.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-                save(scope);
-                applyInjection();
-            },
-        });
-    }
+function tagsHtml(x) {
+    return [
+        x.once ? `<span class="ayc-tag ayc-tag-once">${icon('fa-bolt')}ครั้งเดียว</span>` : '',
+        x.group ? `<span class="ayc-tag">${icon('fa-circle-half-stroke')}${esc(x.group)}</span>` : '',
+    ].join('');
 }
 
 function itemCard(scope, it) {
-    const moveTitle = scope === 'global' ? 'ย้ายไปแชทนี้' : 'ย้ายไปทุกแชท';
-    const moveIcon = scope === 'global' ? 'fa-comment-dots' : 'fa-earth-asia';
-    const tags = [
-        it.once ? '<span class="ayc-tag ayc-tag-once"><i class="fa-solid fa-bolt"></i>ครั้งเดียว</span>' : '',
-        it.group ? `<span class="ayc-tag"><i class="fa-solid fa-circle-half-stroke"></i>${esc(it.group)}</span>` : '',
-    ].join('');
     return `
-<div class="ayc-card ${it.enabled ? 'ayc-on' : ''} ${ui.expanded.has(it.id) ? 'ayc-expanded' : ''}" data-scope="${scope}" data-id="${esc(it.id)}">
-  <span class="ayc-grip" title="ลากเพื่อเรียง"><i class="fa-solid fa-grip-vertical"></i></span>
-  ${switchHtml(it.enabled)}
+<div class="ayc-card ${it.enabled ? 'ayc-on' : ''} ${it.once ? 'ayc-once' : ''} ${ui.expanded.has(it.id) ? 'ayc-expanded' : ''}" data-scope="${scope}" data-id="${esc(it.id)}">
+  <span class="ayc-grip" title="ลากเพื่อเรียง">${icon('fa-grip-vertical')}</span>
   <div class="ayc-card-main" data-act="expand">
-    <div class="ayc-card-title">${esc(it.title || '(ไม่มีชื่อ)')}${tags}</div>
+    <div class="ayc-card-top"><span class="ayc-card-title">${esc(it.title || '(ไม่มีชื่อ)')}</span>${tagsHtml(it)}</div>
     <div class="ayc-card-text">${esc(it.text)}</div>
   </div>
-  <div class="ayc-card-actions">
-    <button class="ayc-mini" data-act="edit" title="แก้ไข"><i class="fa-solid fa-pen"></i></button>
-    <button class="ayc-mini" data-act="move" title="${moveTitle}"><i class="fa-solid ${moveIcon}"></i></button>
-    <button class="ayc-mini ayc-danger" data-act="delete" title="ลบ"><i class="fa-solid fa-trash-can"></i></button>
-  </div>
+  ${switchHtml(it.enabled, '', it.enabled ? 'ปิดคำสั่งนี้' : 'เปิดคำสั่งนี้')}
+  <button class="ayc-icon ayc-more" data-act="more" title="ตัวเลือก" aria-label="ตัวเลือก">${icon('fa-ellipsis-vertical')}</button>
 </div>`;
 }
 
-function renderLibrary() {
+function viewLibrary() {
     const entries = libEntries().filter(e => (ui.cat === 'all' || e.cat === ui.cat) && matches(e));
     if (!entries.length) return emptyState('fa-magnifying-glass', 'ไม่พบแม่แบบ', '');
     const chatOk = hasChat();
     const gSrc = new Map(list('global').map(x => [x.src, x]));
     const cSrc = new Map(list('chat').map(x => [x.src, x]));
 
-    // group by category when showing all
     const groups = [];
     if (ui.cat === 'all') {
-        const order = ['mine', ...CATEGORIES.map(c => c.id)];
-        for (const id of order) {
+        for (const id of ['mine', ...CATEGORIES.map(c => c.id)]) {
             const g = entries.filter(e => e.cat === id);
             if (g.length) groups.push({ id, items: g });
         }
     } else {
-        groups.push({ id: null, items: entries });
+        groups.push({ id: ui.cat, items: entries });
     }
 
-    const addBtn = (scope, entry, inList, disabled) => {
+    const addBtn = (scope, inList, disabled) => {
         const state = !inList ? '' : (inList.enabled ? 'ayc-in ayc-in-on' : 'ayc-in');
-        const icon = !inList ? 'fa-plus' : (inList.enabled ? 'fa-check' : 'fa-circle');
+        const ic = !inList ? 'fa-plus' : (inList.enabled ? 'fa-check' : 'fa-circle');
         const label = scope === 'global' ? 'ทุกแชท' : 'แชทนี้';
-        const tip = !inList ? `เพิ่มและเปิดใน${label}` : (inList.enabled ? `กดเพื่อปิดใน${label}` : `อยู่ใน${label}แล้ว (ปิดอยู่) — กดเพื่อเปิด`);
-        return `<button class="ayc-add ${state}" data-add="${scope}" ${disabled ? 'disabled' : ''} title="${tip}"><i class="fa-solid ${icon}"></i>${label}</button>`;
+        const tip = !inList ? `เพิ่มและเปิดใน${label}` : (inList.enabled ? `กดเพื่อปิดใน${label}` : `อยู่ใน${label}แล้ว (ปิดอยู่) กดเพื่อเปิด`);
+        return `<button class="ayc-add ${state}" data-add="${scope}" ${disabled ? 'disabled' : ''} title="${tip}">${icon(ic)}${label}</button>`;
     };
 
     return groups.map(g => {
-        const head = g.id ? (() => { const c = catLabel(g.id); return `<div class="ayc-group-head"><i class="fa-solid ${c.icon}"></i>${esc(c.label)}</div>`; })() : '';
+        const c = catLabel(g.id);
+        const head = `<h3 class="ayc-h">${icon(c.icon)} ${esc(c.label)} <small>${g.items.length}</small></h3>`;
         const cards = g.items.map(e => `
-<div class="ayc-lib-card ${ui.expanded.has(e.key) ? 'ayc-expanded' : ''}" data-key="${esc(e.key)}">
+<div class="ayc-lib ${ui.expanded.has(e.key) ? 'ayc-expanded' : ''} ${gSrc.get(e.key)?.enabled || cSrc.get(e.key)?.enabled ? 'ayc-on' : ''}" data-key="${esc(e.key)}">
   <div class="ayc-lib-main" data-act="expand">
-    <div class="ayc-card-title">${esc(e.title)}
-      ${e.once ? '<span class="ayc-tag ayc-tag-once"><i class="fa-solid fa-bolt"></i>ครั้งเดียว</span>' : ''}
-      ${e.group ? `<span class="ayc-tag"><i class="fa-solid fa-circle-half-stroke"></i>${esc(e.group)}</span>` : ''}
-    </div>
+    <div class="ayc-card-top"><span class="ayc-card-title">${esc(e.title)}</span>${tagsHtml(e)}</div>
     ${e.desc ? `<div class="ayc-lib-desc">${esc(e.desc)}</div>` : ''}
     <div class="ayc-card-text ayc-mono">${esc(e.text)}</div>
   </div>
   <div class="ayc-lib-actions">
-    ${addBtn('global', e, gSrc.get(e.key), false)}
-    ${addBtn('chat', e, cSrc.get(e.key), !chatOk)}
-    ${e.mine ? `<button class="ayc-mini" data-act="lib-edit" title="แก้แม่แบบ"><i class="fa-solid fa-pen"></i></button>
-               <button class="ayc-mini ayc-danger" data-act="lib-delete" title="ลบแม่แบบ"><i class="fa-solid fa-trash-can"></i></button>` : ''}
+    ${addBtn('global', gSrc.get(e.key), false)}
+    ${addBtn('chat', cSrc.get(e.key), !chatOk)}
+    ${e.mine ? `<button class="ayc-icon ayc-more" data-act="lib-more" title="ตัวเลือก" aria-label="ตัวเลือก">${icon('fa-ellipsis-vertical')}</button>` : ''}
   </div>
 </div>`).join('');
-        return head + `<div class="ayc-list">${cards}</div>`;
+        return head + `<div class="ayc-grid">${cards}</div>`;
     }).join('');
 }
 
-function emptyState(icon, title, text, showLibLink = false) {
+function emptyState(ic, title, text, showLibLink = false) {
     return `
 <div class="ayc-empty">
-  <div class="ayc-empty-icon"><i class="fa-solid ${icon}"></i></div>
+  <div class="ayc-empty-icon">${icon(ic)}</div>
   <div class="ayc-empty-title">${esc(title)}</div>
   ${text ? `<div class="ayc-empty-text">${esc(text)}</div>` : ''}
-  ${showLibLink ? '<button class="ayc-btn" data-tab="lib"><i class="fa-solid fa-book-bookmark"></i>เปิดคลังสำเร็จรูป</button>' : ''}
+  ${showLibLink ? `<button class="ayc-btn ayc-primary" data-tab="lib">${icon('fa-book-bookmark')}เปิดคลังสำเร็จรูป</button>` : ''}
 </div>`;
 }
 
-// ───────────────────────── sheets ─────────────────────────
+// ───────────────────────── settings tab ─────────────────────────
 
-function openSheet(html) {
-    const $sheet = $root.find('[data-ref="sheet"]');
-    $sheet.find('[data-ref="sheet-card"]').html(html);
-    $sheet.removeClass('ayc-hidden');
+const POS_OPTIONS = [
+    { v: POS.IN_CHAT, tag: '@ ความลึก', label: 'ในแชท ตามความลึก', hint: 'แนะนำ · แทรกระหว่างข้อความในแชท นับจากข้อความล่าสุดขึ้นไป' },
+    { v: POS.IN_PROMPT, tag: 'หลัง', label: 'ต่อท้าย prompt หลัก', hint: 'อยู่ไกลจากข้อความล่าสุด โมเดลอาจให้น้ำหนักน้อยกว่า' },
+    { v: POS.BEFORE_PROMPT, tag: 'ก่อน', label: 'ก่อน prompt หลัก', hint: 'อยู่บนสุดของ prompt' },
+];
+
+function viewSettings() {
+    const s = settings();
+    const pos = Number(s.position);
+    return `
+<h3 class="ayc-h">${icon('fa-location-crosshairs')} ตำแหน่งที่แทรก</h3>
+<div class="ayc-card-plain">
+  <div class="ayc-poslist">${POS_OPTIONS.map(o => `
+    <button class="ayc-pos ${pos === o.v ? 'ayc-on' : ''}" data-set="position" data-v="${o.v}">
+      <span class="ayc-pos-tag">${esc(o.tag)}</span><span class="ayc-grow"><b>${esc(o.label)}</b><small>${esc(o.hint)}</small></span>
+    </button>`).join('')}</div>
+  <div class="ayc-setrow ${pos === POS.IN_CHAT ? '' : 'ayc-disabled'}">
+    <div class="ayc-grow"><b>ความลึก (depth)</b><small>0 = หลังข้อความล่าสุด แรงสุดแต่บอทอาจตอบสนองคำสั่งตรงๆ · 2–4 สมดุลที่สุด · ลึกเกิน 6 เริ่มลืม</small></div>
+    <div class="ayc-stepper">
+      <button class="ayc-icon" data-step="-1" aria-label="ลด" ${pos !== POS.IN_CHAT ? 'disabled' : ''}>${icon('fa-minus')}</button>
+      <input class="ayc-input ayc-num" type="number" data-s="depth" min="0" max="50" value="${Number(s.depth)}" inputmode="numeric" ${pos !== POS.IN_CHAT ? 'disabled' : ''}>
+      <button class="ayc-icon" data-step="1" aria-label="เพิ่ม" ${pos !== POS.IN_CHAT ? 'disabled' : ''}>${icon('fa-plus')}</button>
+    </div>
+  </div>
+  <div class="ayc-setrow ayc-setcol">
+    <div><b>ส่งในนาม (role)</b></div>
+    <div class="ayc-seg ayc-seg3">${[[ROLE.SYSTEM, 'System'], [ROLE.USER, 'User'], [ROLE.ASSISTANT, 'Assistant']].map(([v, l]) =>
+        `<button class="ayc-segbtn ${Number(s.role) === v ? 'ayc-on' : ''}" data-set="role" data-v="${v}">${l}</button>`).join('')}</div>
+  </div>
+</div>
+
+<h3 class="ayc-h">${icon('fa-quote-left')} แม่แบบห่อคำสั่ง <small><code>{{list}}</code> คือที่วางรายการ</small></h3>
+<div class="ayc-card-plain">
+  <textarea class="ayc-input ayc-mono-input" data-s="template" rows="4">${esc(s.template)}</textarea>
+  <button class="ayc-link" data-act="tpl-reset">${icon('fa-rotate-left')} คืนค่าแม่แบบเริ่มต้น</button>
+</div>
+
+<h3 class="ayc-h">${icon('fa-sliders')} การทำงาน</h3>
+<div class="ayc-card-plain">
+  <div class="ayc-setrow">
+    <div class="ayc-grow"><b>${icon('fa-bolt', 'ayc-ic-once')} แจ้งเมื่อคำสั่งใช้ครั้งเดียวมีผลแล้ว</b><small>ป๊อบอัพเล็กๆ หลังบอทตอบ บอกว่าคำสั่งไหนถูกปิดไปแล้ว แตะที่ป๊อบอัพเพื่อเปิดกลับมาก่อน swipe ได้</small></div>
+    ${switchHtml(s.onceNotice, 'data-s="onceNotice"')}
+  </div>
+  <div class="ayc-setrow">
+    <div class="ayc-grow"><b>${icon('fa-ghost')} ไม่ส่งตอน generate เบื้องหลัง</b><small>กัน OOC ปนเข้า quiet prompt ของ extension อื่น เช่น งานสรุปความจำ</small></div>
+    ${switchHtml(s.skipQuiet, 'data-s="skipQuiet"')}
+  </div>
+</div>
+
+<h3 class="ayc-h">${icon('fa-palette')} หน้าตา</h3>
+<div class="ayc-card-plain">
+  <div class="ayc-seg ayc-seg3">${[['theme', 'fa-palette', 'ตามธีม'], ['light', 'fa-sun', 'สว่าง'], ['dark', 'fa-moon', 'มืด']].map(([k, ic, l]) =>
+        `<button class="ayc-segbtn ${s.scheme === k ? 'ayc-on' : ''}" data-set="scheme" data-v="${k}">${icon(ic)} ${l}</button>`).join('')}</div>
+  <div class="ayc-hint">ตามธีม = ใช้สีจากธีม ST ที่ใช้อยู่ (สีเน้นมาจาก Quote Color)</div>
+</div>
+
+<h3 class="ayc-h">${icon('fa-box-archive')} สำรอง / ย้ายเครื่อง <small>ลิสต์ทุกแชท + คลังของฉัน</small></h3>
+<div class="ayc-card-plain">
+  <div class="ayc-row">
+    <button class="ayc-btn" data-act="export">${icon('fa-file-export')} ส่งออก</button>
+    <button class="ayc-btn" data-act="import">${icon('fa-file-import')} นำเข้า</button>
+    <input type="file" accept=".json,application/json" data-ref="import-file" hidden>
+  </div>
+</div>
+
+<h3 class="ayc-h">${icon('fa-code-branch')} เวอร์ชัน</h3>
+<div class="ayc-card-plain">
+  <div class="ayc-verline">ที่รันอยู่: <b>v${VERSION}</b> <span data-ayc-remote>${remoteHtml()}</span></div>
+  <div class="ayc-row">
+    <button class="ayc-btn" data-act="vcheck">${icon('fa-magnifying-glass')} ตรวจเวอร์ชัน</button>
+    <button class="ayc-btn ${isStale() ? 'ayc-primary' : ''}" data-act="reload">${icon('fa-rotate')} โหลดเวอร์ชันล่าสุด</button>
+  </div>
+  <div class="ayc-hint">หลังกด Update ใน ST แล้ว เบราว์เซอร์ (โดยเฉพาะมือถือและเว็บแอปบนหน้าจอโฮม) มักยังใช้ไฟล์เก่าที่จำไว้ ปุ่มนี้ดึงไฟล์ใหม่ทั้งหมดแล้วโหลดหน้าใหม่ให้</div>
+</div>`;
 }
 
-function closeSheet() {
-    if (!$root) return;
-    $root.find('[data-ref="sheet"]').addClass('ayc-hidden');
-    ui.editing = null;
+function bindSettingsView() {
+    const s = () => settings();
+    const after = () => { ctx().saveSettingsDebounced(); applyInjection(); renderStatus(); };
+
+    $root.on('click', '[data-set]', function () {
+        const k = String($(this).data('set'));
+        const raw = String($(this).data('v'));
+        s()[k] = k === 'scheme' ? raw : Number(raw);
+        after();
+        render();
+    });
+    $root.on('click', '[data-step]', function () {
+        const v = Math.max(0, Math.min(50, Number(s().depth) + Number($(this).data('step'))));
+        s().depth = v;
+        $root.find('[data-s="depth"]').val(v);
+        after();
+    });
+    $root.on('change input', '.ayc-body [data-s]', function (e) {
+        const k = String($(this).data('s'));
+        if (k === 'template' && e.type === 'change') return;
+        let v = this.type === 'checkbox' ? this.checked : $(this).val();
+        if (k === 'depth') {
+            if (e.type === 'input' && v === '') return;
+            v = Math.max(0, Math.min(50, parseInt(v) || 0));
+        }
+        s()[k] = v;
+        after();
+    });
+    $root.on('click', '[data-act="tpl-reset"]', () => {
+        s().template = DEFAULT_TEMPLATE;
+        $root.find('[data-s="template"]').val(DEFAULT_TEMPLATE);
+        after();
+        toastr.success('คืนค่าแม่แบบแล้ว', '', { timeOut: 1400 });
+    });
+    $root.on('click', '[data-act="export"]', exportData);
+    $root.on('click', '[data-act="import"]', () => $root.find('[data-ref="import-file"]').trigger('click'));
+    $root.on('change', '[data-ref="import-file"]', function () {
+        const f = this.files?.[0];
+        if (f) importData(f);
+        this.value = '';
+    });
+    $root.on('click', '[data-act="vcheck"]', async () => {
+        const remote = await checkForNewVersion(true);
+        if (!remote) toastr.warning('อ่านเวอร์ชันบนเซิร์ฟเวอร์ไม่ได้');
+        else if (!newer(remote, VERSION)) toastr.success(`รัน v${VERSION} อยู่ ตรงกับที่ติดตั้งไว้แล้ว`);
+        else toastr.info(`ติดตั้งไว้ v${remote} แต่หน้านี้รัน v${VERSION} กด “โหลดเวอร์ชันล่าสุด”`);
+        render();
+    });
+    $root.on('click', '[data-act="reload"]', reloadWithFreshFiles);
 }
 
-function sheetHead(icon, title) {
-    return `<div class="ayc-sheet-head"><div class="ayc-sheet-title"><i class="fa-solid ${icon}"></i>${esc(title)}</div>
-<button class="ayc-icon-btn" data-act="sheet-close"><i class="fa-solid fa-xmark"></i></button></div>`;
-}
+// ───────────────────────── editor / preview sheets ─────────────────────────
 
 function openEditor(target) {
-    ui.editing = target;
     const s = settings();
     let data = { title: '', text: '', once: false, group: '' };
-    let scope = target.scope || 'global';
+    const scope = target.scope || 'global';
     if (target.mode === 'item' && target.id) {
         const it = list(target.scope).find(x => x.id === target.id);
         if (it) data = it;
@@ -630,47 +862,55 @@ function openEditor(target) {
     const isLib = target.mode === 'lib';
     const title = isLib ? (isNew ? 'สร้างแม่แบบในคลัง' : 'แก้แม่แบบ') : (isNew ? 'เพิ่มคำสั่ง' : 'แก้คำสั่ง');
     const groups = [...new Set([...list('global'), ...list('chat'), ...s.myLibrary, ...STARTERS].map(x => x.group).filter(Boolean))];
+    const chatOk = hasChat();
 
-    openSheet(`
-${sheetHead(isLib ? 'fa-book-bookmark' : 'fa-pen-to-square', title)}
-<div class="ayc-form">
-  <label class="ayc-field"><span>ชื่อ (ไว้ดูเอง ไม่ถูกส่งให้โมเดล)</span>
-    <input type="text" data-f="title" maxlength="80" value="${esc(data.title)}" placeholder="เช่น ห้ามพูดแทนผู้เล่น"></label>
-  <label class="ayc-field"><span>คำสั่ง (ข้อความที่ส่งให้โมเดล — ใช้ {{char}} {{user}} ได้)</span>
-    <textarea data-f="text" rows="5" placeholder="Never write {{user}}'s actions…">${esc(data.text)}</textarea></label>
-  ${!isLib && isNew ? `
-  <div class="ayc-field"><span>เก็บไว้ที่</span>
-    <div class="ayc-seg">
-      <label><input type="radio" name="ayc-scope" value="global" ${scope === 'global' ? 'checked' : ''}><span><i class="fa-solid fa-earth-asia"></i>ทุกแชท</span></label>
-      <label class="${hasChat() ? '' : 'ayc-disabled'}"><input type="radio" name="ayc-scope" value="chat" ${scope === 'chat' ? 'checked' : ''} ${hasChat() ? '' : 'disabled'}><span><i class="fa-solid fa-comment-dots"></i>แชทนี้</span></label>
-    </div></div>` : ''}
-  <div class="ayc-row">
-    <label class="ayc-check"><input type="checkbox" data-f="once" ${data.once ? 'checked' : ''}><span><i class="fa-solid fa-bolt"></i>ใช้ครั้งเดียว <small>ปิดเองหลังบอทตอบ</small></span></label>
+    const body = `
+<label class="ayc-label">ชื่อ <small>ไว้ดูเอง ไม่ถูกส่งให้โมเดล</small></label>
+<input class="ayc-input" type="text" data-f="title" maxlength="80" value="${esc(data.title)}" placeholder="เช่น ห้ามพูดแทนผู้เล่น">
+<label class="ayc-label">คำสั่ง <small>ข้อความที่ส่งให้โมเดล · ใช้ {{char}} {{user}} ได้</small></label>
+<textarea class="ayc-input ayc-mono-input" data-f="text" rows="5" placeholder="Never write {{user}}'s actions…">${esc(data.text)}</textarea>
+${!isLib && isNew ? `
+<label class="ayc-label">เก็บไว้ที่</label>
+<div class="ayc-seg ayc-seg2" data-ref="scope-seg">
+  <button class="ayc-segbtn ${scope !== 'chat' ? 'ayc-on' : ''}" data-scope-pick="global">${icon('fa-earth-asia')} ทุกแชท</button>
+  <button class="ayc-segbtn ${scope === 'chat' && chatOk ? 'ayc-on' : ''}" data-scope-pick="chat" ${chatOk ? '' : 'disabled'}>${icon('fa-comment-dots')} แชทนี้</button>
+</div>` : ''}
+<div class="ayc-card-plain ayc-mt">
+  <div class="ayc-setrow">
+    <div class="ayc-grow"><b>${icon('fa-bolt', 'ayc-ic-once')} ใช้ครั้งเดียว</b><small>ปิดเองหลังบอทตอบ 1 ข้อความ เหมาะกับข้ามเวลา เปลี่ยนฉาก หักมุม</small></div>
+    ${switchHtml(data.once, 'data-f="once"')}
   </div>
-  <label class="ayc-field"><span>กลุ่ม (ไม่บังคับ) — คำสั่งกลุ่มเดียวกันเปิดได้ทีละอัน</span>
-    <input type="text" data-f="group" list="ayc-groups" maxlength="30" value="${esc(data.group)}" placeholder="เช่น length, pace, pov">
-    <datalist id="ayc-groups">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></label>
-  ${!isLib ? `<label class="ayc-check"><input type="checkbox" data-f="toLib"><span><i class="fa-solid fa-book-bookmark"></i>บันทึกเป็นแม่แบบในคลังด้วย</span></label>` : ''}
+  ${!isLib ? `<div class="ayc-setrow">
+    <div class="ayc-grow"><b>${icon('fa-book-bookmark')} บันทึกเป็นแม่แบบในคลังด้วย</b><small>เก็บไว้ใช้กับแชทอื่นภายหลัง</small></div>
+    ${switchHtml(false, 'data-f="toLib"')}
+  </div>` : ''}
 </div>
-<div class="ayc-sheet-foot">
-  <button class="ayc-btn ayc-btn-ghost" data-act="sheet-close">ยกเลิก</button>
-  <button class="ayc-btn ayc-btn-primary" data-act="editor-save"><i class="fa-solid fa-check"></i>บันทึก</button>
-</div>`);
+<label class="ayc-label">กลุ่ม <small>ไม่บังคับ · คำสั่งกลุ่มเดียวกันเปิดได้ทีละอัน</small></label>
+<input class="ayc-input" type="text" data-f="group" list="ayc-groups" maxlength="30" value="${esc(data.group)}" placeholder="เช่น length, pace, pov">
+<datalist id="ayc-groups">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist>`;
 
-    const $card = $root.find('[data-ref="sheet-card"]');
-    $card.off('click.ed').on('click.ed', '[data-act="editor-save"]', () => saveEditor($card));
-    setTimeout(() => $card.find(isNew ? '[data-f="title"]' : '[data-f="text"]').trigger('focus'), 50);
+    const foot = `<button class="ayc-btn" data-x>ยกเลิก</button>
+<button class="ayc-btn ayc-primary" data-act="editor-save">${icon('fa-check')} บันทึก</button>`;
+
+    const { $l, close } = formSheet(title, isLib ? 'fa-book-bookmark' : 'fa-pen-to-square', body, foot);
+    let pickedScope = scope === 'chat' && chatOk ? 'chat' : 'global';
+    $l.on('click', '[data-scope-pick]', function () {
+        if (this.disabled) return;
+        pickedScope = String($(this).data('scope-pick'));
+        $l.find('[data-scope-pick]').removeClass('ayc-on');
+        $(this).addClass('ayc-on');
+    });
+    $l.on('click', '[data-act="editor-save"]', () => { if (saveEditor($l, target, pickedScope)) close(); });
+    setTimeout(() => $l.find(isNew ? '[data-f="title"]' : '[data-f="text"]').trigger('focus'), 60);
 }
 
-function saveEditor($card) {
-    const t = ui.editing;
-    if (!t) return;
-    const val = (f) => $card.find(`[data-f="${f}"]`);
+function saveEditor($l, t, pickedScope) {
+    const val = (f) => $l.find(`[data-f="${f}"]`);
     const title = String(val('title').val() || '').trim();
     const text = String(val('text').val() || '').trim();
     const once = val('once').is(':checked');
     const group = String(val('group').val() || '').trim();
-    if (!text) { toastr.warning('ใส่ข้อความคำสั่งก่อน'); return; }
+    if (!text) { toastr.warning('ใส่ข้อความคำสั่งก่อน'); return false; }
     const finalTitle = title || text.slice(0, 40) + (text.length > 40 ? '…' : '');
     const s = settings();
 
@@ -698,76 +938,14 @@ function saveEditor($card) {
                 applyInjection();
             }
         } else {
-            const scope = $card.find('input[name="ayc-scope"]:checked').val() || t.scope || 'global';
             const item = { id: uid(), title: finalTitle, text, enabled: true, once, group, src: libId ? 'm:' + libId : '' };
-            if (!addItem(scope, item)) return;
-            ui.tab = scope;
+            if (!addItem(pickedScope, item)) return false;
+            ui.tab = pickedScope;
+            settings().lastTab = pickedScope;
         }
     }
-    closeSheet();
     render();
-}
-
-function openSettingsSheet() {
-    const s = settings();
-    openSheet(`
-${sheetHead('fa-sliders', 'ตั้งค่าการส่งคำสั่ง')}
-<div class="ayc-form">
-  <label class="ayc-field"><span>ตำแหน่งที่แทรก</span>
-    <select data-s="position">
-      <option value="1" ${Number(s.position) === 1 ? 'selected' : ''}>ในแชท @ ความลึก (แนะนำ)</option>
-      <option value="0" ${Number(s.position) === 0 ? 'selected' : ''}>ต่อท้าย prompt หลัก</option>
-      <option value="2" ${Number(s.position) === 2 ? 'selected' : ''}>ก่อน prompt หลัก</option>
-    </select></label>
-  <div class="ayc-row ayc-row-2">
-    <label class="ayc-field"><span>ความลึก (depth)</span>
-      <input type="number" data-s="depth" min="0" max="50" value="${Number(s.depth)}"></label>
-    <label class="ayc-field"><span>ส่งในนาม (role)</span>
-      <select data-s="role">
-        <option value="0" ${Number(s.role) === 0 ? 'selected' : ''}>System</option>
-        <option value="1" ${Number(s.role) === 1 ? 'selected' : ''}>User</option>
-        <option value="2" ${Number(s.role) === 2 ? 'selected' : ''}>Assistant</option>
-      </select></label>
-  </div>
-  <div class="ayc-hint"><i class="fa-solid fa-lightbulb"></i>depth 0 = หลังข้อความล่าสุด แรงสุดแต่บอทอาจตอบสนองคำสั่งตรงๆ · 2–4 สมดุลที่สุด · ลึกเกิน 6 เริ่มลืม</div>
-  <label class="ayc-field"><span>แม่แบบห่อคำสั่ง — <code>{{list}}</code> คือที่วางรายการ</span>
-    <textarea data-s="template" rows="4">${esc(s.template)}</textarea></label>
-  <button class="ayc-link" data-act="tpl-reset"><i class="fa-solid fa-rotate-left"></i>คืนค่าแม่แบบเริ่มต้น</button>
-  <label class="ayc-check"><input type="checkbox" data-s="skipQuiet" ${s.skipQuiet ? 'checked' : ''}><span><i class="fa-solid fa-ghost"></i>ไม่ส่งตอน generate เบื้องหลัง <small>เช่น สรุปความจำ ของ extension อื่น</small></span></label>
-  <div class="ayc-divider"></div>
-  <div class="ayc-field"><span>สำรอง / ย้ายเครื่อง (ลิสต์ทุกแชท + คลังของฉัน)</span>
-    <div class="ayc-row">
-      <button class="ayc-btn" data-act="export"><i class="fa-solid fa-file-export"></i>ส่งออก</button>
-      <button class="ayc-btn" data-act="import"><i class="fa-solid fa-file-import"></i>นำเข้า</button>
-      <input type="file" accept=".json,application/json" data-ref="import-file" hidden>
-    </div></div>
-</div>`);
-
-    const $card = $root.find('[data-ref="sheet-card"]');
-    $card.off('.st');
-    $card.on('change.st input.st', '[data-s]', function () {
-        const k = $(this).data('s');
-        let v = this.type === 'checkbox' ? this.checked : $(this).val();
-        if (k === 'depth') v = Math.max(0, Math.min(50, parseInt(v) || 0));
-        if (k === 'position' || k === 'role') v = Number(v);
-        s[k] = v;
-        ctx().saveSettingsDebounced();
-        applyInjection();
-        renderStatus();
-    });
-    $card.on('click.st', '[data-act="tpl-reset"]', () => {
-        s.template = DEFAULT_TEMPLATE;
-        $card.find('[data-s="template"]').val(DEFAULT_TEMPLATE);
-        ctx().saveSettingsDebounced();
-        applyInjection();
-    });
-    $card.on('click.st', '[data-act="export"]', exportData);
-    $card.on('click.st', '[data-act="import"]', () => $card.find('[data-ref="import-file"]').trigger('click'));
-    $card.on('change.st', '[data-ref="import-file"]', function () {
-        const f = this.files?.[0];
-        if (f) importData(f);
-        this.value = '';
-    });
+    return true;
 }
 
 async function openPreviewSheet() {
@@ -778,21 +956,19 @@ async function openPreviewSheet() {
         try { tokens = `≈ ${await ctx().getTokenCountAsync(shown)} tokens`; } catch { /* ignore */ }
     }
     const s = settings();
-    const where = Number(s.position) === POS.IN_CHAT ? `ในแชท ความลึก ${s.depth}` : (Number(s.position) === POS.IN_PROMPT ? 'ต่อท้าย prompt หลัก' : 'ก่อน prompt หลัก');
-    openSheet(`
-${sheetHead('fa-eye', 'สิ่งที่โมเดลจะเห็น')}
-<div class="ayc-meta"><span><i class="fa-solid fa-location-crosshairs"></i>${esc(where)}</span>${tokens ? `<span><i class="fa-solid fa-coins"></i>${esc(tokens)}</span>` : ''}</div>
-${shown ? `<pre class="ayc-preview">${esc(shown)}</pre>` : emptyState('fa-moon', s.enabled ? 'ยังไม่มีคำสั่งที่เปิดอยู่' : 'ส่วนขยายปิดอยู่', 'ตอนนี้ไม่มีอะไรถูกแทรกเข้า prompt')}
-<div class="ayc-sheet-foot">
-  ${shown ? '<button class="ayc-btn" data-act="copy-preview"><i class="fa-solid fa-copy"></i>คัดลอก</button>' : ''}
-  <button class="ayc-btn ayc-btn-primary" data-act="sheet-close">เรียบร้อย</button>
-</div>`);
-    const $card = $root.find('[data-ref="sheet-card"]');
-    $card.off('click.pv').on('click.pv', '[data-act="copy-preview"]', async () => {
+    const body = `
+<div class="ayc-meta"><span>${icon('fa-location-crosshairs')}${esc(whereText(s))}</span>${tokens ? `<span>${icon('fa-coins')}${esc(tokens)}</span>` : ''}</div>
+${shown ? `<pre class="ayc-preview">${esc(shown)}</pre>` : emptyState('fa-moon', s.enabled ? 'ยังไม่มีคำสั่งที่เปิดอยู่' : 'ส่วนขยายปิดอยู่', 'ตอนนี้ไม่มีอะไรถูกแทรกเข้า prompt')}`;
+    const foot = `${shown ? `<button class="ayc-btn" data-act="copy-preview">${icon('fa-copy')} คัดลอก</button>` : ''}
+<button class="ayc-btn ayc-primary" data-x>เรียบร้อย</button>`;
+    const { $l } = formSheet('สิ่งที่โมเดลจะเห็น', 'fa-eye', body, foot);
+    $l.on('click', '[data-act="copy-preview"]', async () => {
         try { await navigator.clipboard.writeText(shown); toastr.success('คัดลอกแล้ว', '', { timeOut: 1200 }); }
         catch { toastr.error('คัดลอกไม่ได้'); }
     });
 }
+
+// ───────────────────────── export / import ─────────────────────────
 
 function exportData() {
     const s = settings();
@@ -836,13 +1012,76 @@ async function importData(file) {
     }
 }
 
-async function confirmBox(text) {
-    const c = ctx();
-    if (typeof c.callGenericPopup === 'function' && c.POPUP_TYPE) {
-        const r = await c.callGenericPopup(esc(text), c.POPUP_TYPE.CONFIRM, '', { okButton: 'ลบ', cancelButton: 'ยกเลิก' });
-        return !!r;
+// ───────────────────────── version check + hard refresh ─────────────────────────
+//
+// ST โหลดไฟล์ extension จาก URL เดิมทุกครั้ง เบราว์เซอร์ (และเว็บแอปบนหน้าจอโฮมของ iOS ที่แทบไม่โหลดใหม่จริง)
+// จึงมักยังใช้ไฟล์เก่าที่ cache ไว้หลังกด Update เทียบกับ manifest บนเซิร์ฟเวอร์ ถ้าใหม่กว่าก็บอก
+// และให้กดดึงไฟล์ใหม่ทุกไฟล์แล้วโหลดหน้าใหม่
+
+let remoteVersion = '';
+let versionCheckedAt = 0;
+let versionToastShown = false;
+
+function newer(a, b) {
+    const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
     }
-    return window.confirm(text);
+    return false;
+}
+const isStale = () => !!remoteVersion && newer(remoteVersion, VERSION);
+
+async function fetchRemoteVersion() {
+    try {
+        const res = await fetch(new URL('manifest.json', BASE_URL), { cache: 'no-store' });
+        if (!res.ok) return '';
+        return String((await res.json())?.version ?? '');
+    } catch { return ''; }
+}
+
+function remoteHtml() {
+    if (!remoteVersion) return '';
+    return isStale()
+        ? `· ติดตั้งไว้ <b>v${esc(remoteVersion)}</b> <span class="ayc-stale">ยังไม่ได้โหลด กด “โหลดเวอร์ชันล่าสุด”</span>`
+        : '· เป็นเวอร์ชันล่าสุดที่ติดตั้งไว้แล้ว';
+}
+
+function showRemote() {
+    document.querySelectorAll('[data-ayc-remote]').forEach(el => { el.innerHTML = remoteHtml(); });
+    if ($root) renderStatus();
+}
+
+async function checkForNewVersion(force = false) {
+    if (!force && Date.now() - versionCheckedAt < 10 * 60_000) return remoteVersion;
+    versionCheckedAt = Date.now();
+    remoteVersion = await fetchRemoteVersion();
+    showRemote();
+    if (isStale() && !versionToastShown) {
+        versionToastShown = true;
+        toastr.info(`ติดตั้ง v${esc(remoteVersion)} ไว้แล้ว แต่หน้านี้ยังรัน v${VERSION} อยู่<br>แตะที่นี่เพื่อโหลดเวอร์ชันใหม่`, 'As you command', {
+            timeOut: 0, extendedTimeOut: 0, closeButton: true, escapeHtml: false, onclick: () => reloadWithFreshFiles(),
+        });
+    }
+    return remoteVersion;
+}
+
+async function reloadWithFreshFiles() {
+    try {
+        toastr.info('กำลังดึงไฟล์ใหม่…', 'As you command', { timeOut: 2000 });
+        const c = ctx();
+        // บันทึกที่ค้างอยู่ก่อนโหลดหน้าใหม่ (save แบบ debounce รอ ~1 วินาที)
+        const pending = [
+            typeof c.saveSettings === 'function' ? c.saveSettings() : new Promise(r => setTimeout(r, 1200)),
+            typeof c.saveMetadata === 'function' && hasChat() ? c.saveMetadata() : null,
+        ];
+        // cache: 'reload' ดึงจากเซิร์ฟเวอร์แล้วเขียนทับสำเนาใน cache ของเบราว์เซอร์ หน้าที่โหลดใหม่จึงได้ไฟล์ใหม่
+        await Promise.all([
+            ...pending.map(p => Promise.resolve(p).catch(() => null)),
+            ...FILES.map(f => fetch(new URL(f, BASE_URL), { cache: 'reload' }).catch(() => null)),
+        ]);
+    } finally {
+        location.reload();
+    }
 }
 
 // ───────────────────────── wand menu + settings drawer ─────────────────────────
@@ -852,26 +1091,37 @@ function updateWandBadge() {
     $('#ayc_wand .ayc-wand-badge').text(n || '').toggle(n > 0);
 }
 
+function syncDrawer() {
+    $('#ayc_enabled_cb').prop('checked', settings().enabled);
+}
+
 function mountMenus() {
     const $wand = $(`
 <div id="ayc_wand" class="list-group-item flex-container flexGap5 interactable" tabindex="0" title="คลังคำสั่ง OOC">
   <div class="fa-solid fa-scroll extensionsMenuExtensionButton"></div>
   <span>As you command</span><b class="ayc-wand-badge"></b>
 </div>`);
-    $wand.on('click', openOverlay);
+    $wand.on('click', () => openOverlay());
     $('#extensionsMenu').append($wand);
 
+    if (document.getElementById('ayc_settings')) return;
     const $panel = $(`
-<div class="ayc-settings-panel">
+<div id="ayc_settings" class="ayc-settings-panel">
   <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-      <b><i class="fa-solid fa-scroll"></i> As you command</b>
+      <b><i class="fa-solid fa-scroll"></i> As you command <small class="ayc-vertag">v${VERSION}</small></b>
       <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">
-      <small>คลังคำสั่ง OOC ติ๊กเปิด/ปิดได้ คำสั่งที่เปิดจะถูกแทรกทุกเทิร์น บอทจึงไม่ลืม — เปิดแผงได้จากเมนู 🪄 หรือพิมพ์ <code>/ayc</code></small>
       <label class="checkbox_label"><input type="checkbox" id="ayc_enabled_cb"><span>เปิดใช้งาน</span></label>
-      <div class="menu_button menu_button_icon" id="ayc_open_btn"><i class="fa-solid fa-scroll"></i><span>เปิดแผงคำสั่ง</span></div>
+      <div class="ayc-drawer-btns">
+        <div class="menu_button" data-ayc-open="global"><i class="fa-solid fa-scroll"></i> เปิดแผงคำสั่ง</div>
+        <div class="menu_button" data-ayc-open="lib"><i class="fa-solid fa-book-bookmark"></i> คลัง</div>
+        <div class="menu_button" data-ayc-open="settings"><i class="fa-solid fa-gear"></i> ตั้งค่า</div>
+        <div class="menu_button" data-ayc-reload title="ดึงไฟล์ของ As you command จากเซิร์ฟเวอร์ใหม่ทั้งหมดแล้วโหลดหน้าใหม่"><i class="fa-solid fa-rotate"></i> โหลดเวอร์ชันล่าสุด</div>
+      </div>
+      <div class="ayc-verline">ที่รันอยู่: <b>v${VERSION}</b> <span data-ayc-remote></span></div>
+      <small>คลังคำสั่ง OOC ติ๊กเปิด/ปิดได้ คำสั่งที่เปิดจะถูกแทรกทุกเทิร์น บอทจึงไม่ลืม · เปิดแผงจากเมนู 🪄 หรือพิมพ์ <code>/ayc</code></small>
     </div>
   </div>
 </div>`);
@@ -881,7 +1131,8 @@ function mountMenus() {
         applyInjection();
         refresh();
     });
-    $panel.find('#ayc_open_btn').on('click', openOverlay);
+    $panel.on('click', '[data-ayc-open]', function () { openOverlay(String($(this).data('ayc-open'))); });
+    $panel.on('click', '[data-ayc-reload]', reloadWithFreshFiles);
     $('#extensions_settings2').append($panel);
 }
 
@@ -985,7 +1236,7 @@ jQuery(async () => {
         registerCommands();
 
         const { eventSource, eventTypes } = ctx();
-        eventSource.on(eventTypes.CHAT_CHANGED, () => { pendingOnce = null; applyInjection(); refresh(); });
+        eventSource.on(eventTypes.CHAT_CHANGED, () => { pendingOnce = null; applyInjection(); refresh(); checkForNewVersion(); });
         eventSource.on(eventTypes.GENERATION_AFTER_COMMANDS, onAfterCommands);
         eventSource.on(eventTypes.MESSAGE_RECEIVED, onMessageReceived);
         eventSource.on(eventTypes.GENERATION_STOPPED, () => { pendingOnce = null; });
@@ -993,7 +1244,9 @@ jQuery(async () => {
 
         applyInjection();
         updateWandBadge();
-        console.log(LOG, 'loaded');
+        setTimeout(() => checkForNewVersion(true), 3000);
+        globalThis.AsYouCommand = { open: openOverlay, version: VERSION, remote: () => remoteVersion, isStale, reload: reloadWithFreshFiles };
+        console.log(LOG, `v${VERSION} ready`);
     } catch (err) {
         console.error(LOG, 'failed to load', err);
     }
