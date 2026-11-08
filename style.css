@@ -24,11 +24,14 @@
     --ayc-grad: linear-gradient(90deg, var(--ayc-purple), var(--ayc-accent));
     --ayc-accent-soft: color-mix(in srgb, var(--ayc-accent) 12%, transparent);
 
+    /* สูงตามหน้าจอ (vh/dvh) ไม่ใช่ 100%: ถ้า <html> มี transform/perspective (ธีมหรือ extension อื่นใส่)
+     * Safari บน iPhone จะวัด fixed เทียบกับ <html> ที่สูง 0 แผงเลยสูง 0 มองไม่เห็น */
     position: fixed;
     left: 0;
     right: 0;
     top: 0;
-    height: 100%;
+    height: 100vh;
+    height: 100dvh;
     z-index: 10050;
     display: flex;
     justify-content: center;
