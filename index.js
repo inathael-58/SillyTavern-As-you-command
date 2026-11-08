@@ -6,13 +6,14 @@
 // สีตามธีม ST หรือเลือกสว่าง/มืดเองได้ในหน้า ตั้งค่า
 
 import { STARTERS, CATEGORIES } from './starters.js';
+import { initLauncher, renderLauncher, updateLauncherBadge, resetLauncherPos, resetLook, lookEditorHtml, mountLookEditor, LAUNCH_POS_DEFAULT } from './launcher.js';
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.1.2'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.2.0'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
-const FILES = ['index.js', 'starters.js', 'style.css', 'manifest.json'];
+const FILES = ['index.js', 'starters.js', 'launcher.js', 'style.css', 'manifest.json'];
 
 const POS = { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 };
 const ROLE = { SYSTEM: 0, USER: 1, ASSISTANT: 2 };
@@ -29,6 +30,9 @@ const DEFAULTS = {
     skipQuiet: true,
     onceNotice: true,
     scheme: 'theme', // theme | light | dark
+    launcher: true,  // ปุ่มลอยบนจอ
+    launcherPos: LAUNCH_POS_DEFAULT,
+    launcherLook: null, // เติมจาก LOOK_DEFAULT ใน launcher.js
     global: [],
     myLibrary: [],
     seeded: false,
@@ -248,6 +252,7 @@ const ui = {
     cat: 'all',
     query: '',
     expanded: new Set(),
+    lookOpen: false, // ส่วนแต่งปุ่มลอยในหน้า ตั้งค่า กางอยู่ไหม
 };
 
 let $root = null;
@@ -606,6 +611,10 @@ function renderBody(animate = false) {
     else if (ui.tab === 'lib') html = viewLibrary();
     else html = viewList(ui.tab);
     $body.html(`<div class="ayc-view ${animate ? 'ayc-enter' : ''}">${html}<div class="ayc-bottom-pad"></div></div>`);
+    if (ui.tab === 'settings') {
+        mountLookEditor($body.find('[data-ref="look"]')[0]);
+        $body.find('[data-ref="look-details"]').on('toggle', function () { ui.lookOpen = this.open; });
+    }
     if (ui.tab === 'global' || ui.tab === 'chat') makeSortable($body, ui.tab);
 }
 
@@ -772,7 +781,23 @@ function viewSettings() {
   </div>
 </div>
 
-<h3 class="ayc-h">${icon('fa-palette')} หน้าตา</h3>
+<h3 class="ayc-h" data-ref="launch-head">${icon('fa-circle-dot')} ปุ่มลอย <small>ตัวเลขบนปุ่ม = คำสั่งที่มีผลอยู่ตอนนี้</small></h3>
+<div class="ayc-card-plain">
+  <div class="ayc-setrow">
+    <div class="ayc-grow"><b>${icon('fa-hand-pointer')} แสดงปุ่มลอยบนจอ</b><small>แตะเพื่อเปิดแผง · ลากไปวางตรงไหนก็ได้ · กดค้างเพื่อแต่งปุ่ม · เก็บเข้า Quick Dock ได้</small></div>
+    ${switchHtml(s.launcher, 'data-s="launcher"')}
+  </div>
+  <details class="ayc-lookbox" data-ref="look-details" ${ui.lookOpen ? 'open' : ''}>
+    <summary>${icon('fa-paintbrush')} แต่งหน้าตาปุ่ม</summary>
+    ${lookEditorHtml()}
+  </details>
+  <div class="ayc-row ayc-mt">
+    <button class="ayc-btn" data-act="launch-resetpos">${icon('fa-crosshairs')} รีเซ็ตตำแหน่ง</button>
+    <button class="ayc-btn" data-act="look-reset">${icon('fa-rotate-left')} หน้าตาแบบเดิม</button>
+  </div>
+</div>
+
+<h3 class="ayc-h">${icon('fa-palette')} หน้าตาแผง</h3>
 <div class="ayc-card-plain">
   <div class="ayc-seg ayc-seg3">${[['theme', 'fa-palette', 'ตามธีม'], ['light', 'fa-sun', 'สว่าง'], ['dark', 'fa-moon', 'มืด']].map(([k, ic, l]) =>
         `<button class="ayc-segbtn ${s.scheme === k ? 'ayc-on' : ''}" data-set="scheme" data-v="${k}">${icon(ic)} ${l}</button>`).join('')}</div>
@@ -826,6 +851,18 @@ function bindSettingsView() {
         }
         s()[k] = v;
         after();
+        if (k === 'launcher') { renderLauncher(); syncDrawer(); }
+    });
+    $root.on('click', '[data-act="launch-resetpos"]', () => {
+        resetLauncherPos();
+        syncDrawer();
+        render();
+        toastr.success('ย้ายปุ่มลอยกลับที่เดิมแล้ว', '', { timeOut: 1400 });
+    });
+    $root.on('click', '[data-act="look-reset"]', () => {
+        resetLook();
+        render();
+        toastr.success('ปุ่มลอยกลับเป็นหน้าตาเดิมแล้ว', '', { timeOut: 1400 });
     });
     $root.on('click', '[data-act="tpl-reset"]', () => {
         s().template = DEFAULT_TEMPLATE;
@@ -1094,10 +1131,20 @@ async function reloadWithFreshFiles() {
 function updateWandBadge() {
     const n = settings().enabled ? activeItems().length : 0;
     $('#ayc_wand .ayc-wand-badge').text(n || '').toggle(n > 0);
+    updateLauncherBadge();
+}
+
+/** เปิดแผงที่หน้า ตั้งค่า ตรงส่วนแต่งปุ่มลอย (กดค้างที่ปุ่ม / ปุ่มในหน้า Extensions) */
+function openCustomize() {
+    ui.lookOpen = true;
+    openOverlay('settings');
+    const head = $root.find('[data-ref="launch-head"]')[0];
+    if (head) setTimeout(() => head.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
 }
 
 function syncDrawer() {
     $('#ayc_enabled_cb').prop('checked', settings().enabled);
+    $('#ayc_launcher_cb').prop('checked', !!settings().launcher);
 }
 
 function mountMenus() {
@@ -1119,10 +1166,12 @@ function mountMenus() {
     </div>
     <div class="inline-drawer-content"><div class="ayc-drawer-inner">
       <label class="checkbox_label"><input type="checkbox" id="ayc_enabled_cb"><span>เปิดใช้งาน</span></label>
+      <label class="checkbox_label"><input type="checkbox" id="ayc_launcher_cb"><span>ปุ่มลอยบนจอ (ตัวเลข = คำสั่งที่มีผลอยู่)</span></label>
       <div class="ayc-drawer-btns">
         <div class="menu_button" data-ayc-open="global"><i class="fa-solid fa-scroll"></i> เปิดแผงคำสั่ง</div>
         <div class="menu_button" data-ayc-open="lib"><i class="fa-solid fa-book-bookmark"></i> คลัง</div>
         <div class="menu_button" data-ayc-open="settings"><i class="fa-solid fa-gear"></i> ตั้งค่า</div>
+        <div class="menu_button" data-ayc-look><i class="fa-solid fa-paintbrush"></i> แต่งปุ่มลอย</div>
         <div class="menu_button" data-ayc-reload title="ดึงไฟล์ของ As you command จากเซิร์ฟเวอร์ใหม่ทั้งหมดแล้วโหลดหน้าใหม่"><i class="fa-solid fa-rotate"></i> โหลดเวอร์ชันล่าสุด</div>
       </div>
       <div class="ayc-verline">ที่รันอยู่: <b>v${VERSION}</b> <span data-ayc-remote></span></div>
@@ -1136,7 +1185,14 @@ function mountMenus() {
         applyInjection();
         refresh();
     });
+    $panel.find('#ayc_launcher_cb').prop('checked', !!settings().launcher).on('change', function () {
+        settings().launcher = this.checked;
+        ctx().saveSettingsDebounced();
+        renderLauncher();
+        refresh();
+    });
     $panel.on('click', '[data-ayc-open]', function () { openOverlay(String($(this).data('ayc-open'))); });
+    $panel.on('click', '[data-ayc-look]', openCustomize);
     $panel.on('click', '[data-ayc-reload]', reloadWithFreshFiles);
     $('#extensions_settings2').append($panel);
 }
@@ -1239,6 +1295,15 @@ jQuery(async () => {
         settings();
         mountMenus();
         registerCommands();
+        initLauncher({
+            settings,
+            save: () => ctx().saveSettingsDebounced(),
+            open: () => openOverlay(),
+            customize: openCustomize,
+            count: () => activeItems().length,
+            enabled: () => !!settings().enabled,
+        });
+        renderLauncher();
 
         const { eventSource, eventTypes } = ctx();
         eventSource.on(eventTypes.CHAT_CHANGED, () => { pendingOnce = null; applyInjection(); refresh(); checkForNewVersion(); });
@@ -1250,7 +1315,7 @@ jQuery(async () => {
         applyInjection();
         updateWandBadge();
         setTimeout(() => checkForNewVersion(true), 3000);
-        globalThis.AsYouCommand = { open: openOverlay, version: VERSION, remote: () => remoteVersion, isStale, reload: reloadWithFreshFiles };
+        globalThis.AsYouCommand = { open: openOverlay, customize: openCustomize, version: VERSION, remote: () => remoteVersion, isStale, reload: reloadWithFreshFiles };
         console.log(LOG, `v${VERSION} ready`);
     } catch (err) {
         console.error(LOG, 'failed to load', err);
