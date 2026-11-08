@@ -1,0 +1,12 @@
+{
+    "display_name": "As you command",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Kitima (inathael-58)",
+    "version": "1.0.0",
+    "homePage": "https://github.com/inathael-58/SillyTavern-As-you-command",
+    "auto_update": true
+}
