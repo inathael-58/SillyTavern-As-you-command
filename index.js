@@ -9,7 +9,7 @@ import { STARTERS, CATEGORIES } from './starters.js';
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.1.0'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.1.1'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'starters.js', 'style.css', 'manifest.json'];
@@ -1112,7 +1112,7 @@ function mountMenus() {
       <b><i class="fa-solid fa-scroll"></i> As you command <small class="ayc-vertag">v${VERSION}</small></b>
       <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
-    <div class="inline-drawer-content">
+    <div class="inline-drawer-content"><div class="ayc-drawer-inner">
       <label class="checkbox_label"><input type="checkbox" id="ayc_enabled_cb"><span>เปิดใช้งาน</span></label>
       <div class="ayc-drawer-btns">
         <div class="menu_button" data-ayc-open="global"><i class="fa-solid fa-scroll"></i> เปิดแผงคำสั่ง</div>
@@ -1122,7 +1122,7 @@ function mountMenus() {
       </div>
       <div class="ayc-verline">ที่รันอยู่: <b>v${VERSION}</b> <span data-ayc-remote></span></div>
       <small>คลังคำสั่ง OOC ติ๊กเปิด/ปิดได้ คำสั่งที่เปิดจะถูกแทรกทุกเทิร์น บอทจึงไม่ลืม · เปิดแผงจากเมนู 🪄 หรือพิมพ์ <code>/ayc</code></small>
-    </div>
+    </div></div>
   </div>
 </div>`);
     $panel.find('#ayc_enabled_cb').prop('checked', settings().enabled).on('change', function () {

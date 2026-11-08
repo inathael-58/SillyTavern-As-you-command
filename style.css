@@ -40,6 +40,10 @@
     -webkit-tap-highlight-color: transparent;
     animation: ayc-fade 0.15s ease-out;
 }
+/* ตัวหนังสือบนพื้นสีเน้น: ดำเมื่อสีเน้นสว่าง ขาวเมื่อสีเน้นเข้ม (เบราว์เซอร์เก่าใช้สีเข้มด้านบน) */
+@supports (color: oklch(from red l c h)) {
+    #ayc-overlay { --ayc-on-accent: oklch(from var(--ayc-accent) clamp(0, (0.66 - l) * 1000, 1) 0 0); }
+}
 #ayc-overlay[data-scheme="light"] {
     --ayc-fg: #23232b;
     --ayc-bg: #f6f4f1;
@@ -105,10 +109,12 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     width: 36px; height: 36px; flex: none;
     display: grid; place-items: center;
     border-radius: 11px;
-    color: var(--ayc-on-accent);
+    color: #fff;
     font-size: 16px;
     background: linear-gradient(135deg, var(--ayc-accent), color-mix(in srgb, var(--ayc-accent) 60%, #b04bd6));
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--ayc-accent) 35%, transparent);
+    /* ไอคอนขาวมีเงาอ่อน อ่านออกบนสีเน้นทุกแบบ ทั้งสว่างและมืด */
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 14px color-mix(in srgb, var(--ayc-accent) 35%, transparent);
     transition: filter 0.2s, opacity 0.2s;
 }
 #ayc-overlay .ayc-headtext { flex: 1; min-width: 0; padding: 0 4px; }
@@ -198,8 +204,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     width: 54px; height: 54px; border-radius: 17px; border: 0;
     display: grid; place-items: center;
     background: linear-gradient(135deg, var(--ayc-accent), color-mix(in srgb, var(--ayc-accent) 60%, #b04bd6));
-    color: var(--ayc-on-accent); font-size: 22px;
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--ayc-accent) 40%, rgba(0, 0, 0, 0.4));
+    color: #fff; font-size: 22px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 24px color-mix(in srgb, var(--ayc-accent) 40%, rgba(0, 0, 0, 0.4));
     transition: scale 0.1s;
 }
 #ayc-overlay .ayc-fab:active { scale: 0.94; }
@@ -455,7 +461,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     font-size: 0.75em; text-align: center; line-height: 18px;
 }
 #ayc_wand .ayc-wand-badge:empty { display: none; }
-.ayc-settings-panel .inline-drawer-content { display: flex; flex-direction: column; gap: 6px; }
+/* อย่าตั้ง display ให้ .inline-drawer-content เอง ไม่งั้นทับ display:none ของ ST แล้วลิ้นชักหุบไม่ได้ */
+.ayc-settings-panel .ayc-drawer-inner { display: flex; flex-direction: column; gap: 6px; }
 .ayc-settings-panel .ayc-drawer-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
 .ayc-settings-panel .ayc-drawer-btns .menu_button { width: fit-content; display: inline-flex; gap: 6px; align-items: center; }
 .ayc-settings-panel .ayc-vertag { font-weight: 400; opacity: 0.65; margin-left: 4px; }
