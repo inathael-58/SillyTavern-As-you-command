@@ -9,7 +9,7 @@ import { STARTERS, CATEGORIES } from './starters.js';
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.1.1'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.1.2'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'starters.js', 'style.css', 'manifest.json'];
@@ -481,12 +481,15 @@ function buildOverlay() {
         const entry = libEntries().find(x => x.key === key);
         if (!entry) return;
         const existing = list(scope).find(x => x.src === key);
+        const where = scope === 'chat' ? 'แชทนี้' : 'ทุกแชท';
         if (existing) {
-            setEnabled(scope, existing.id, !existing.enabled);
+            const on = !existing.enabled;
+            setEnabled(scope, existing.id, on);
+            toastr[on ? 'success' : 'info'](`${on ? 'เปิด' : 'ปิด'} "${entry.title}" ใน ${where} แล้ว`, '', { timeOut: 1600 });
         } else {
             const item = entry.mine ? fromMine(entry, true) : fromStarter(entry, true);
             if (!addItem(scope, item)) return;
-            toastr.success(`เพิ่ม "${entry.title}" → ${scope === 'chat' ? 'แชทนี้' : 'ทุกแชท'}`, '', { timeOut: 1600 });
+            toastr.success(`เพิ่มและเปิด "${entry.title}" ใน ${where} แล้ว`, '', { timeOut: 1600 });
         }
         render();
     });
@@ -679,11 +682,13 @@ function viewLibrary() {
     }
 
     const addBtn = (scope, inList, disabled) => {
-        const state = !inList ? '' : (inList.enabled ? 'ayc-in ayc-in-on' : 'ayc-in');
-        const ic = !inList ? 'fa-plus' : (inList.enabled ? 'fa-check' : 'fa-circle');
         const label = scope === 'global' ? 'ทุกแชท' : 'แชทนี้';
-        const tip = !inList ? `เพิ่มและเปิดใน${label}` : (inList.enabled ? `กดเพื่อปิดใน${label}` : `อยู่ใน${label}แล้ว (ปิดอยู่) กดเพื่อเปิด`);
-        return `<button class="ayc-add ${state}" data-add="${scope}" ${disabled ? 'disabled' : ''} title="${tip}">${icon(ic)}${label}</button>`;
+        if (!inList) {
+            return `<button class="ayc-add" data-add="${scope}" ${disabled ? 'disabled' : ''} title="เพิ่มเข้า ${label} และเปิดทันที">${icon('fa-plus')}${label}</button>`;
+        }
+        const on = inList.enabled;
+        return `<button class="ayc-add ayc-in ${on ? 'ayc-in-on' : ''}" data-add="${scope}" ${disabled ? 'disabled' : ''} aria-pressed="${on}"
+            title="${on ? `เปิดอยู่ใน ${label} · แตะเพื่อปิด` : `อยู่ใน ${label} แต่ปิดอยู่ · แตะเพื่อเปิด`}">${icon(on ? 'fa-toggle-on' : 'fa-toggle-off')}${label}<small>${on ? 'เปิดอยู่' : 'ปิดอยู่'}</small></button>`;
     };
 
     return groups.map(g => {
