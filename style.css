@@ -605,20 +605,20 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 .ayc-lbadge {
     position: absolute;
     z-index: 1;
-    top: -4px;
-    right: -4px;
-    min-width: 20px;
-    height: 20px;
+    top: -3px;
+    right: -3px;
+    min-width: 18px;
+    height: 18px;
     padding: 0 5px;
     border-radius: 999px;
-    font: 800 11.5px/20px var(--mainFontFamily, sans-serif);
+    font: 800 10.5px/18px var(--mainFontFamily, sans-serif);
     text-align: center;
     color: #fff;
     background: #2fa84f;
     box-shadow: 0 0 0 2px var(--SmartThemeBlurTintColor, #222), 0 2px 6px rgba(0, 0, 0, 0.3);
     pointer-events: none;
 }
-.ayc-launch[data-edge="left"] .ayc-lbadge { right: auto; left: calc(100% - 16px); }
+.ayc-launch[data-edge="left"] .ayc-lbadge { right: auto; left: calc(100% - 15px); }
 .ayc-lbadge[hidden] { display: none; }
 .ayc-lbadge.ayc-pop { animation: ayc-lpop 0.35s ease-out; }
 @keyframes ayc-lpop { 0% { scale: 0.4; } 60% { scale: 1.25; } 100% { scale: 1; } }
