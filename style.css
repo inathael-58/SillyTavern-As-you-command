@@ -515,9 +515,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     opacity: var(--ayc-lop);
     transition: opacity 0.2s, scale 0.12s;
 }
-.ayc-launch[data-bg="glass"] { --ayc-lbg: color-mix(in srgb, var(--ayc-ltint) 78%, transparent); }
-.ayc-launch[data-bg="none"] { --ayc-lbg: transparent; }
-.ayc-launch[data-fg="accent"] { --ayc-lfg: var(--ayc-laccent); }
+.ayc-launch[data-bg="surface"] { --ayc-lbg: color-mix(in srgb, var(--ayc-ltint) 80%, transparent); --ayc-lfg: var(--ayc-laccent); }
+.ayc-launch[data-bg="none"] { --ayc-lbg: transparent; --ayc-lfg: var(--ayc-laccent); }
 .ayc-launch[data-shadow="1"] { filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.35)); }
 #ayc_launcher {
     position: fixed;
@@ -550,8 +549,10 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     font-size: var(--ayc-licon);
     line-height: 1;
 }
-.ayc-launch[data-bg="theme"] .ayc-lshape { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28); }
-.ayc-launch[data-fg="theme"] .ayc-licon, .ayc-launch[data-fg="theme"] .ayc-llabel { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+.ayc-launch[data-bg="auto"] .ayc-lshape { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28); }
+.ayc-launch[data-bg="auto"]:not([data-shape="sticker"]) :is(.ayc-licon, .ayc-llabel) { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+/* ไม่มีพื้น: ขอบบาง ๆ สีพื้น UI ของธีม ให้ไอคอนอ่านออกบนแชททุกแบบ */
+:is(.ayc-launch[data-bg="none"], .ayc-launch[data-shape="sticker"]) :is(.ayc-licon, .ayc-llabel) { filter: drop-shadow(0 0 1px var(--ayc-lring, #000)) drop-shadow(0 0 1px var(--ayc-lring, #000)); }
 .ayc-launch[data-border="1"] .ayc-lshape { box-shadow: inset 0 0 0 1.5px var(--ayc-lline); }
 .ayc-licon { pointer-events: none; }
 .ayc-lemoji { font-size: calc(var(--ayc-licon) * 1.1); line-height: 1; pointer-events: none; }
@@ -575,7 +576,6 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 .ayc-launch[data-shape="sticker"] .ayc-lshape { background: none; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 0; overflow: visible; box-shadow: none !important; }
 .ayc-launch[data-shape="sticker"] .ayc-limg { object-fit: contain; width: 100%; height: 100%; }
 .ayc-launch[data-shape="sticker"] .ayc-licon, .ayc-launch[data-shape="sticker"] .ayc-lemoji { font-size: calc(var(--ayc-lsize) * 0.78); }
-.ayc-launch[data-shape="sticker"][data-fg="theme"] { --ayc-lfg: var(--ayc-laccent); }
 
 /* การเคลื่อนไหว (ที่รูปทรง ตอนลากและตัวเลขจึงนิ่ง) */
 .ayc-launch[data-anim="float"] .ayc-lshape { animation: ayc-lfloat 3.2s ease-in-out infinite; }
@@ -601,24 +601,27 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     84% { transform: none; }
 }
 
-/* ตัวเลข: เขียวแบบจุด "กำลังสั่ง" ในหัวแผง */
+/* ตัวเลข: เขียวแบบจุด "กำลังสั่ง" ในหัวแผง (ปรับความสว่างให้เห็นชัดบนพื้นปุ่ม)
+ * ตำแหน่งและขนาดเดียวกับป้ายตัวเลขของปุ่มลอยทุกตัวในชุด (float-colors.js): มุมขวาบน 18px
+ * จึงเรียงตรงกันใน Quick Dock ไม่สลับซ้าย/ขวาตามขอบจอ */
 .ayc-lbadge {
     position: absolute;
-    z-index: 1;
-    top: -3px;
-    right: -3px;
+    z-index: 2;
+    top: -4px;
+    right: -4px;
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
+    box-sizing: border-box;
     border-radius: 999px;
-    font: 800 10.5px/18px var(--mainFontFamily, sans-serif);
+    font: 700 10.5px/18px var(--mainFontFamily, sans-serif);
+    font-variant-numeric: tabular-nums;
     text-align: center;
-    color: #fff;
-    background: #2fa84f;
-    box-shadow: 0 0 0 2px var(--SmartThemeBlurTintColor, #222), 0 2px 6px rgba(0, 0, 0, 0.3);
+    color: var(--ayc-lbadge-fg, #fff);
+    background: var(--ayc-lbadge, #2fa84f);
+    box-shadow: 0 0 0 2px var(--ayc-lring, var(--SmartThemeBlurTintColor, #222));
     pointer-events: none;
 }
-.ayc-launch[data-edge="left"] .ayc-lbadge { right: auto; left: calc(100% - 15px); }
 .ayc-lbadge[hidden] { display: none; }
 .ayc-lbadge.ayc-pop { animation: ayc-lpop 0.35s ease-out; }
 @keyframes ayc-lpop { 0% { scale: 0.4; } 60% { scale: 1.25; } 100% { scale: 1; } }
