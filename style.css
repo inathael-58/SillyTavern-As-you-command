@@ -709,3 +709,18 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 }
 #ayc-overlay .ayc-fchip.ayc-on { color: var(--ayc-solid); }
 body.no-blur #ayc-overlay :is(.ayc-shell, .ayc-sheet, .ayc-dialog) { background: var(--ayc-solid); }
+
+/* แม่แบบสีที่อ่านออกเสมอ (theme-palette.js) — แผงคำสั่งและหน้าตั้งค่า: พื้นทึบ สีเน้น/ตัวอักษรตัดกับพื้นจริง
+   ทำงานเมื่อคำนวณสีสำเร็จแล้วเท่านั้น (<html class="ayc-pal">) ถ้าไม่สำเร็จจะใช้สีธีมตรง ๆ แบบเดิม
+   โหมดสว่าง/มืดที่เลือกเอง คงชุดสีของตัวเอง เปลี่ยนแค่สีเน้นให้ตัดกับพื้นของโหมดนั้น · ปุ่มลอยไม่อยู่ในนี้ */
+html.ayc-pal :is(#ayc-overlay:not([data-scheme="light"]):not([data-scheme="dark"]), .ayc-settings-panel) {
+    --SmartThemeBlurTintColor: var(--ayc-p-surface);
+    --SmartThemeBodyColor: var(--ayc-p-fg);
+    --SmartThemeQuoteColor: var(--ayc-p-accent-text);
+    --SmartThemeEmColor: var(--ayc-p-em);
+    --SmartThemeUnderlineColor: var(--ayc-p-underline);
+    --SmartThemeBorderColor: var(--ayc-p-line);
+    --ayc-on-accent: var(--ayc-p-on-accent);
+}
+html.ayc-pal #ayc-overlay[data-scheme="light"] { --ayc-accent: var(--ayc-p-accent-light); --ayc-on-accent: #ffffff; }
+html.ayc-pal #ayc-overlay[data-scheme="dark"] { --ayc-accent: var(--ayc-p-accent-dark); }
