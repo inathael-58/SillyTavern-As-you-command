@@ -7,14 +7,14 @@
 
 import { STARTERS, CATEGORIES } from './starters.js';
 import { installThemePalette } from './theme-palette.js';
-import { initLauncher, renderLauncher, updateLauncherBadge, resetLauncherPos, resetLook, lookEditorHtml, mountLookEditor, LAUNCH_POS_DEFAULT } from './launcher.js';
+import { initLauncher, refreshLooks, renderLauncher, updateLauncherBadge, resetLauncherPos, resetLook, lookEditorHtml, mountLookEditor, LAUNCH_POS_DEFAULT } from './launcher.js';
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.2.9'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.3.0'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
-const FILES = ['index.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'style.css', 'manifest.json'];
+const FILES = ['index.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];
 
 const POS = { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 };
 const ROLE = { SYSTEM: 0, USER: 1, ASSISTANT: 2 };
@@ -1430,7 +1430,12 @@ window.addEventListener('unhandledrejection', e => {
 
 jQuery(async () => {
     // สีที่อ่านออกเสมอ (ดู theme-palette.js): โหมดตามธีมใช้ทั้งชุด · โหมดสว่าง/มืดที่เลือกเองใช้แค่สีเน้นที่ตัดกับพื้นของโหมดนั้น
-    try { installThemePalette({ prefix: 'ayc', surfaces: { light: '#f6f4f1', dark: '#15151b' } }); } catch (err) { console.warn(LOG, 'theme palette', err); }
+    // ปุ่มลอยแบบ "ปรับตามธีม" ก็ดึงสีจากชุดนี้ (float-colors.js) แล้ววาดใหม่เมื่อเปลี่ยนธีม
+    let palette = null;
+    try {
+        palette = installThemePalette({ prefix: 'ayc', surfaces: { light: '#f6f4f1', dark: '#15151b' } });
+        palette.onChange(() => refreshLooks());
+    } catch (err) { console.warn(LOG, 'theme palette', err); }
     try {
         settings();
         mountMenus();
@@ -1442,6 +1447,7 @@ jQuery(async () => {
             customize: openCustomize,
             count: () => activeItems().length,
             enabled: () => !!settings().enabled,
+            palette: () => palette?.current ?? null,
         });
         renderLauncher();
 

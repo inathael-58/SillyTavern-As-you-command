@@ -4,6 +4,9 @@
 // หน้าตาแต่งได้แบบเดียวกับ Chat Browser: รูปทรง ไอคอน อีโมจิ รูปภาพ สี ขนาด การเคลื่อนไหว
 // ไม่ใช้ transform กับตัวปุ่มที่ fixed เพราะ ST ใส่ 3D perspective ไว้ที่ <html>
 
+import { parseColor, contrast, ensureContrast } from './theme-palette.js';
+import { floatColors, COLOR_MODE_LABELS } from './float-colors.js';
+
 export const LAUNCH_POS_DEFAULT = Object.freeze({ x: 1, y: 0.45, edge: 'right' });
 
 export const LOOK_DEFAULT = Object.freeze({
@@ -14,9 +17,9 @@ export const LOOK_DEFAULT = Object.freeze({
     fit: 'cover',       // cover | contain
     size: 48,
     iconSize: 44,       // % ของปุ่ม
-    bg: 'theme',        // theme (ไล่สีแบบโลโก้) | glass | custom | none
+    bg: 'auto',         // auto (ไล่สีแบบโลโก้ ปรับตามธีม) | surface (พื้นตามธีม) | custom | none
     bgColor: '#2a2633',
-    fg: 'theme',        // theme (ขาว) | accent | custom
+    fg: 'auto',         // auto (ปรับตามพื้นปุ่ม) | custom
     fgColor: '#ffd38a',
     border: false,
     shadow: true,
@@ -40,11 +43,11 @@ const SHAPES = [
 const ICONS = ['fa-scroll', 'fa-wand-magic-sparkles', 'fa-feather-pointed', 'fa-bullhorn', 'fa-crown', 'fa-gavel', 'fa-book-bookmark', 'fa-list-check',
     'fa-hat-wizard', 'fa-dragon', 'fa-cat', 'fa-paw', 'fa-ghost', 'fa-heart', 'fa-star', 'fa-moon', 'fa-bolt', 'fa-seedling'];
 const ANIMS = [['none', 'นิ่ง'], ['float', 'ลอยขึ้นลง'], ['sway', 'โยกเบา ๆ'], ['pulse', 'เต้นตุบ ๆ'], ['spin', 'หมุนช้า ๆ'], ['glow', 'เรืองแสง'], ['nudge', 'ดุ๊กดิ๊กเมื่อมีคำสั่งเปิดอยู่']];
-const BGS = [['theme', 'ไล่สีแบบโลโก้'], ['glass', 'กระจก (สีธีม)'], ['custom', 'เลือกสี'], ['none', 'โปร่งใส']];
-const FGS = [['theme', 'ขาว'], ['accent', 'สีเน้นของธีม'], ['custom', 'เลือกสี']];
+const BGS = [['auto', 'ไล่สีแบบโลโก้ (ปรับตามธีม)'], ['surface', 'พื้นกระจก (ปรับตามธีม)'], ['custom', COLOR_MODE_LABELS.custom], ['none', 'โปร่งใส']];
+const FGS = Object.entries(COLOR_MODE_LABELS);
 const PRESETS = [
     ['คลาสสิก', {}],
-    ['กระจก', { shape: 'circle', bg: 'glass', fg: 'accent', border: true, size: 46, iconSize: 42 }],
+    ['กระจก', { shape: 'circle', bg: 'surface', border: true, size: 46, iconSize: 42 }],
     ['หัวใจ', { shape: 'heart', icon: 'fa-heart', bg: 'custom', bgColor: '#f06292', fg: 'custom', fgColor: '#ffffff', anim: 'pulse', size: 54, iconSize: 36 }],
     ['ดาวเรือง', { shape: 'star', icon: 'fa-crown', bg: 'custom', bgColor: '#f5c451', fg: 'custom', fgColor: '#4a3200', anim: 'glow', size: 58, iconSize: 32 }],
     ['ดอกไม้', { shape: 'flower', icon: 'fa-seedling', bg: 'custom', bgColor: '#b7e4c7', fg: 'custom', fgColor: '#2d6a4f', anim: 'sway', size: 54, iconSize: 36 }],
@@ -64,6 +67,7 @@ const host = {
     customize: () => {},
     count: () => 0,
     enabled: () => true,
+    palette: () => null, // ชุดสีจาก theme-palette.js (palette.current)
 };
 
 export function initLauncher(h) {
@@ -77,8 +81,55 @@ export function initLauncher(h) {
 
 export function look() {
     const s = host.settings();
-    s.launcherLook = { ...LOOK_DEFAULT, ...(s.launcherLook && typeof s.launcherLook === 'object' ? s.launcherLook : {}) };
-    return s.launcherLook;
+    const L = s.launcherLook = { ...LOOK_DEFAULT, ...(s.launcherLook && typeof s.launcherLook === 'object' ? s.launcherLook : {}) };
+    // 1.3: สีแบบอิงช่องสีธีมเดิม → แบบปรับตามธีม (adaptive)
+    if (L.bg === 'theme') L.bg = 'auto';
+    if (L.bg === 'glass') L.bg = 'surface';
+    if (!['auto', 'surface', 'custom', 'none'].includes(L.bg)) L.bg = 'auto';
+    if (L.fg !== 'custom') L.fg = 'auto';
+    return L;
+}
+
+const LOGO_PURPLE = [176, 75, 214];
+const WHITE = [255, 255, 255];
+const INK = [20, 20, 24];
+const rgbStr = c => `rgb(${c.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(', ')})`;
+const rgbOf = str => parseColor(str)?.slice(0, 3) ?? null;
+
+/**
+ * สีของปุ่มตามหน้าตาที่ตั้งไว้ — ช่องที่ "ปรับตามธีม" ดึงจากแม่แบบสี (float-colors.js) และอ่านออกบนพื้นจริงของปุ่มเสมอ
+ * คืน { lbg, lfg, line, ring, badge, badgeFg } หรือ null ถ้าอ่านสีไม่ได้ (ใช้ค่าใน CSS แทน)
+ */
+function lookColors(L) {
+    const c = floatColors(host.palette?.(), { bg: L.bg === 'custom' ? L.bgColor : null, fg: L.fg === 'custom' ? L.fgColor : null });
+    if (!c) return null;
+    let lbg = null, lfg = c.accentText;
+    if (L.bg === 'auto' && L.shape !== 'sticker') {
+        // ไล่สีแบบโลโก้ในโทนของธีม: สีเน้นของธีม → สีเน้นที่จางเข้าหาพื้น UI · ไอคอนขาวหรือเข้ม แล้วแต่อันไหนตัดกับทั้งสองปลายมากกว่า
+        const a = rgbOf(c.accent) ?? LOGO_PURPLE;
+        const ui = rgbOf(c.ring) ?? INK;
+        const b = a.map((v, i) => v * 0.65 + ui[i] * 0.35);
+        const on = Math.min(contrast(WHITE, a), contrast(WHITE, b)) >= Math.min(contrast(INK, a), contrast(INK, b)) ? WHITE : INK;
+        lbg = `linear-gradient(135deg, ${rgbStr(a)}, ${rgbStr(b)})`;
+        lfg = rgbStr(on);
+    } else if (L.bg === 'surface') lbg = `color-mix(in srgb, ${c.bg} 80%, transparent)`;
+    else if (L.bg === 'custom') lbg = L.bgColor;
+    else lbg = 'transparent';
+    if (L.fg === 'custom') lfg = L.fgColor;
+    // ตัวเลข: เขียวแบบจุด "กำลังสั่ง" ปรับให้เห็นชัดบนพื้นปุ่ม
+    const ring = rgbOf(c.ring) ?? INK;
+    let green = ensureContrast([47, 168, 79], ring, 3);
+    const badgeFg = contrast(WHITE, green) >= contrast(INK, green) ? WHITE : INK;
+    if (contrast(badgeFg, green) < 4.5) { // ตัวเลขเป็นตัวอักษร: ขยับเขียวออกจากสีตัวเลขอีกนิด ถ้ายังเห็นชัดบนพื้นปุ่ม
+        const g2 = ensureContrast(green, badgeFg, 4.5);
+        if (contrast(g2, ring) >= 3) green = g2;
+    }
+    return { lbg, lfg, line: c.border, ring: c.ring, badge: rgbStr(green), badgeFg: rgbStr(badgeFg) };
+}
+
+/** วาดปุ่มทุกอัน (ตัวจริงและตัวอย่าง) ใหม่ เช่น หลังเปลี่ยนธีม */
+export function refreshLooks() {
+    document.querySelectorAll('.ayc-launch').forEach(el => applyLook(el));
 }
 
 /** วาดปุ่ม (ตัวจริงหรือตัวอย่าง) ตามหน้าตาที่ตั้งไว้ */
@@ -96,8 +147,14 @@ function applyLook(el, L = look()) {
     el.style.setProperty('--ayc-lsize', `${size}px`);
     el.style.setProperty('--ayc-licon', `${Math.round(size * clamp(Number(L.iconSize) || 44, 20, 100) / 100)}px`);
     el.style.setProperty('--ayc-lop', String(clamp(Number(L.opacity) || 100, 20, 100) / 100));
-    if (L.bg === 'custom') el.style.setProperty('--ayc-lbg', L.bgColor); else el.style.removeProperty('--ayc-lbg');
-    if (L.fg === 'custom') el.style.setProperty('--ayc-lfg', L.fgColor); else el.style.removeProperty('--ayc-lfg');
+    const c = lookColors(L);
+    const prop = (k, v) => (v ? el.style.setProperty(k, v) : el.style.removeProperty(k));
+    prop('--ayc-lbg', c?.lbg ?? (L.bg === 'custom' ? L.bgColor : null));
+    prop('--ayc-lfg', c?.lfg ?? (L.fg === 'custom' ? L.fgColor : null));
+    prop('--ayc-lline', c?.line);
+    prop('--ayc-lring', c?.ring);
+    prop('--ayc-lbadge', c?.badge);
+    prop('--ayc-lbadge-fg', c?.badgeFg);
     if (mask) { el.style.setProperty('--ayc-lmask', mask.mask); el.style.setProperty('--ayc-lnudge', mask.nudge); }
     let inner = el.querySelector('.ayc-lshape');
     if (!inner) {
