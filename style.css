@@ -4,6 +4,15 @@
  * ไม่ใช้ transform กับ element ที่ fixed (ST ใส่ 3D perspective ไว้ที่ <html>)
  * ปรับสีเน้นเองได้ใน Custom CSS เช่น  #ayc-overlay { --ayc-accent: #c9a96e; } */
 
+/* Shape tokens on :root, not only on #ayc-overlay: the floating button, its badge and the
+   wand-menu badge live outside the overlay and must see them too. */
+:root {
+    --ayc-r-panel: 18px;
+    --ayc-radius: 12px;
+    --ayc-r-ctl: 8px;
+    --ayc-r-pill: 999px;
+}
+
 #ayc-overlay {
     --ayc-fg: var(--SmartThemeBodyColor, #e6e6ea);
     --ayc-accent: var(--SmartThemeQuoteColor, #e18a24);
@@ -397,7 +406,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-navbtn.ayc-on { color: var(--ayc-accent); font-weight: 600; }
 #ayc-overlay .ayc-navbadge {
     position: absolute; top: 4px; left: calc(50% + 6px);
-    min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--ayc-r-ctl);
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--ayc-r-pill);
     background: var(--ayc-accent); color: var(--ayc-on-accent);
     font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
 }
@@ -558,8 +567,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 .ayc-llabel { display: none; font: 700 calc(var(--ayc-licon) * 0.72) / 1 var(--mainFontFamily, sans-serif); white-space: nowrap; pointer-events: none; }
 
 .ayc-launch[data-shape="squircle"] .ayc-lshape { border-radius: 30%; } /* slop-ok: a shape the user picks */
-.ayc-launch[data-shape="bubble"] .ayc-lshape { border-radius: var(--ayc-r-pill) 50% 50% 14%; } /* slop-ok: a shape the user picks */
-.ayc-launch[data-edge="right"][data-shape="bubble"] .ayc-lshape { border-radius: var(--ayc-r-pill) 50% 14% 50%; } /* slop-ok: a shape the user picks */
+.ayc-launch[data-shape="bubble"] .ayc-lshape { border-radius: 50% 50% 50% 14%; } /* slop-ok: a shape the user picks */
+.ayc-launch[data-edge="right"][data-shape="bubble"] .ayc-lshape { border-radius: 50% 50% 14% 50%; } /* slop-ok: a shape the user picks */
 .ayc-launch[data-shape="pill"] { width: auto; min-width: var(--ayc-lsize); }
 .ayc-launch[data-shape="pill"] .ayc-lshape { border-radius: var(--ayc-r-pill); padding: 0 calc(var(--ayc-lsize) * 0.32); }
 .ayc-launch[data-shape="pill"] .ayc-llabel { display: inline; }
@@ -598,7 +607,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     84% { transform: none; }
 }
 
-/* ตัวเลข: เขียวแบบจุด "กำลังสั่ง" ในหัวแผง (ปรับความสว่างให้เห็นชัดบนพื้นปุ่ม)
+/* ตัวเลข: พื้นสีเน้นของธีม ตัวอักษร onAccent แบบเดียวกับปุ่มลอยทุกตัวในชุด
  * ตำแหน่งและขนาดเดียวกับป้ายตัวเลขของปุ่มลอยทุกตัวในชุด (float-colors.js): มุมขวาบน 18px
  * จึงเรียงตรงกันใน Quick Dock ไม่สลับซ้าย/ขวาตามขอบจอ */
 .ayc-lbadge {
@@ -614,8 +623,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     font: 700 10.5px/18px var(--mainFontFamily, sans-serif);
     font-variant-numeric: tabular-nums;
     text-align: center;
-    color: var(--ayc-lbadge-fg, #fff);
-    background: var(--ayc-lbadge, #2fa84f);
+    color: var(--ayc-lbadge-fg, var(--ayc-p-on-accent, #fff));
+    background: var(--ayc-lbadge, var(--ayc-p-accent, var(--SmartThemeQuoteColor, #e18a24)));
     box-shadow: 0 0 0 2px var(--ayc-lring, var(--SmartThemeBlurTintColor, #222));
     pointer-events: none;
 }
