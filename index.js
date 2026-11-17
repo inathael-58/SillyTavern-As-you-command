@@ -11,7 +11,7 @@ import { initLauncher, refreshLooks, renderLauncher, updateLauncherBadge, resetL
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.3.0'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.3.1'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];
@@ -166,7 +166,7 @@ function showOnceNotice(used, chatId) {
     const names = used.map(u => `“${esc(u.title)}”`).join(', ');
     toastr.info(
         `${names}<div class="ayc-toast-sub">ปิดให้แล้ว · ถ้าจะ swipe หรือใช้อีก แตะที่นี่เพื่อเปิดใหม่</div>`,
-        '⚡ คำสั่งใช้ครั้งเดียวมีผลแล้ว',
+        '<i class="fa-solid fa-bolt"></i> คำสั่งใช้ครั้งเดียวมีผลแล้ว',
         {
             timeOut: 7000, extendedTimeOut: 4000, closeButton: true, escapeHtml: false, progressBar: true,
             onclick: () => reEnableOnce(used, chatId),
@@ -182,7 +182,7 @@ function reEnableOnce(used, chatId) {
         if (it && !it.enabled) { setEnabled(scope, id, true); n++; }
     }
     refresh();
-    if (n) toastr.success('กด swipe หรือส่งข้อความต่อได้เลย', `⚡ เปิดอีกครั้งแล้ว ${n} คำสั่ง`, { timeOut: 2200 });
+    if (n) toastr.success('กด swipe หรือส่งข้อความต่อได้เลย', `เปิดอีกครั้งแล้ว ${n} คำสั่ง`, { timeOut: 2200 });
 }
 
 // ───────────────────────── mutations ─────────────────────────
@@ -1290,7 +1290,7 @@ function mountMenus() {
         <textarea class="text_pole" readonly rows="10"></textarea>
         <div class="menu_button" data-ayc-diagcopy><i class="fa-solid fa-copy"></i> คัดลอกรายงาน</div>
       </div>
-      <small>คลังคำสั่ง OOC ติ๊กเปิด/ปิดได้ คำสั่งที่เปิดจะถูกแทรกทุกเทิร์น บอทจึงไม่ลืม · เปิดแผงจากเมนู 🪄 หรือพิมพ์ <code>/ayc</code></small>
+      <small>คลังคำสั่ง OOC ติ๊กเปิด/ปิดได้ คำสั่งที่เปิดจะถูกแทรกทุกเทิร์น บอทจึงไม่ลืม · เปิดแผงจากเมนูไม้กายสิทธิ์ <i class="fa-solid fa-wand-magic-sparkles"></i> หรือพิมพ์ <code>/ayc</code></small>
     </div></div>
   </div>
 </div>`);

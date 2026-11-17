@@ -13,15 +13,19 @@
     --ayc-surface2: color-mix(in srgb, var(--ayc-fg) 10%, transparent);
     --ayc-soft: color-mix(in srgb, var(--ayc-border) 45%, transparent);
     --ayc-dim: color-mix(in srgb, var(--ayc-fg) 62%, transparent);
-    --ayc-on-accent: #16120c;
-    --ayc-high: #ef5b5f;
-    --ayc-once: #f5a524;
-    --ayc-good: #3fb950;
-    --ayc-off: #8a8a96;
-    --ayc-purple: #b07cff;
+    /* One visual system: the theme accent is THE accent (no second purple, no gradients);
+       states come from theme-palette.js, with the old colors as fallback. Shape lock:
+       the window, sheets and dialogs 18, cards 12, controls 8, chips and tags round. */
+    --ayc-on-accent: #16120c; /* slop-ok: fallback before the palette is ready */
+    --ayc-high: var(--ayc-p-danger, #ef5b5f);
+    --ayc-once: var(--ayc-p-warn, #f5a524);
+    --ayc-good: var(--ayc-p-ok, #3fb950);
+    --ayc-off: var(--ayc-dim);
+    --ayc-r-panel: 18px;
     --ayc-radius: 12px;
+    --ayc-r-ctl: 8px;
+    --ayc-r-pill: 999px;
     --ayc-shadow: 0 6px 22px rgba(0, 0, 0, 0.28);
-    --ayc-grad: linear-gradient(90deg, var(--ayc-purple), var(--ayc-accent));
     --ayc-accent-soft: color-mix(in srgb, var(--ayc-accent) 12%, transparent);
 
     /* สูงตามหน้าจอ (vh/dvh) ไม่ใช่ 100%: ถ้า <html> มี transform/perspective (ธีมหรือ extension อื่นใส่)
@@ -47,24 +51,25 @@
 @supports (color: oklch(from red l c h)) {
     #ayc-overlay { --ayc-on-accent: oklch(from var(--ayc-accent) clamp(0, (0.66 - l) * 1000, 1) 0 0); }
 }
+/* The fixed modes are each one grey family: light is warm paper, dark is cool ink. */
 #ayc-overlay[data-scheme="light"] {
-    --ayc-fg: #23232b;
-    --ayc-bg: #f6f4f1;
-    --ayc-border: #d8d3cc;
-    --ayc-surface: #ffffff;
-    --ayc-surface2: #efebe5;
-    --ayc-soft: #e4dfd8;
-    --ayc-dim: #6f6b66;
-    --ayc-shadow: 0 4px 16px rgba(60, 40, 20, 0.08);
+    --ayc-fg: #2a2621; /* slop-ok: fixed mode palette */
+    --ayc-bg: #f6f4f1; /* slop-ok: fixed mode palette */
+    --ayc-border: #d8d3cc; /* slop-ok: fixed mode palette */
+    --ayc-surface: #ffffff; /* slop-ok: fixed mode palette */
+    --ayc-surface2: #efebe5; /* slop-ok: fixed mode palette */
+    --ayc-soft: #e4dfd8; /* slop-ok: fixed mode palette */
+    --ayc-dim: #6f6b66; /* slop-ok: fixed mode palette */
+    --ayc-shadow: 0 4px 16px rgba(60, 40, 20, 0.08); /* slop-ok: warm shadow of the light mode */
 }
 #ayc-overlay[data-scheme="dark"] {
-    --ayc-fg: #ececf1;
-    --ayc-bg: #15151b;
-    --ayc-border: #34343f;
-    --ayc-surface: #1e1e26;
-    --ayc-surface2: #272731;
-    --ayc-soft: #2c2c36;
-    --ayc-dim: #9b9ba8;
+    --ayc-fg: #ececf1; /* slop-ok: fixed mode palette */
+    --ayc-bg: #15151b; /* slop-ok: fixed mode palette */
+    --ayc-border: #34343f; /* slop-ok: fixed mode palette */
+    --ayc-surface: #1e1e26; /* slop-ok: fixed mode palette */
+    --ayc-surface2: #272731; /* slop-ok: fixed mode palette */
+    --ayc-soft: #2c2c36; /* slop-ok: fixed mode palette */
+    --ayc-dim: #9b9ba8; /* slop-ok: fixed mode palette */
 }
 
 #ayc-overlay.ayc-hidden { display: none !important; }
@@ -96,7 +101,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     #ayc-overlay .ayc-shell {
         height: min(94%, 900px);
         border: 1px solid var(--ayc-border);
-        border-radius: 18px;
+        border-radius: var(--ayc-r-panel);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
     }
 }
@@ -111,13 +116,10 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-logo {
     width: 36px; height: 36px; flex: none;
     display: grid; place-items: center;
-    border-radius: 11px;
-    color: #fff;
+    border-radius: var(--ayc-radius);
+    color: var(--ayc-on-accent);
     font-size: 16px;
-    background: linear-gradient(135deg, var(--ayc-accent), color-mix(in srgb, var(--ayc-accent) 60%, #b04bd6));
-    /* ไอคอนขาวมีเงาอ่อน อ่านออกบนสีเน้นทุกแบบ ทั้งสว่างและมืด */
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 14px color-mix(in srgb, var(--ayc-accent) 35%, transparent);
+    background: var(--ayc-accent);
     transition: filter 0.2s, opacity 0.2s;
 }
 #ayc-overlay .ayc-headtext { flex: 1; min-width: 0; padding: 0 4px; }
@@ -128,7 +130,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     white-space: nowrap; overflow: hidden;
 }
 #ayc-overlay .ayc-hsub span:last-child { overflow: hidden; text-overflow: ellipsis; }
-#ayc-overlay .ayc-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ayc-off); }
+#ayc-overlay .ayc-dot { width: 7px; height: 7px; border-radius: var(--ayc-r-pill); flex: none; background: var(--ayc-off); }
 #ayc-overlay .ayc-dot-on { background: var(--ayc-good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ayc-good) 22%, transparent); }
 #ayc-overlay .ayc-hactions { display: flex; gap: 2px; align-items: center; }
 #ayc-overlay .ayc-master { display: flex; margin: 0 6px 0 2px; }
@@ -140,8 +142,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-toolrow { display: flex; gap: 8px; align-items: center; }
 #ayc-overlay .ayc-search { position: relative; flex: 1; min-width: 0; }
 #ayc-overlay .ayc-search > i { position: absolute; left: 14px; top: 50%; translate: 0 -50%; color: var(--ayc-dim); pointer-events: none; }
-#ayc-overlay .ayc-search .ayc-input { padding-left: 40px; border-radius: 24px; }
-#ayc-overlay .ayc-pillbtn { border-radius: 24px; padding: 8px 13px; white-space: nowrap; font-size: 13px; min-height: 40px; }
+#ayc-overlay .ayc-search .ayc-input { padding-left: 40px; border-radius: var(--ayc-r-pill); }
+#ayc-overlay .ayc-pillbtn { border-radius: var(--ayc-r-pill); padding: 8px 13px; white-space: nowrap; font-size: 13px; min-height: 40px; }
 @media (max-width: 420px) { #ayc-overlay .ayc-pillbtn span { display: none; } }
 
 #ayc-overlay .ayc-chiprow {
@@ -151,7 +153,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-chiprow::-webkit-scrollbar { display: none; }
 #ayc-overlay .ayc-fchip {
     flex: none; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap;
-    min-height: 32px; padding: 4px 11px; border-radius: 16px;
+    min-height: 32px; padding: 4px 11px; border-radius: var(--ayc-r-pill);
     border: 1px solid var(--ayc-border); background: var(--ayc-surface); font-size: 12.5px;
 }
 #ayc-overlay .ayc-fchip i { font-size: 0.9em; color: var(--ayc-dim); }
@@ -172,7 +174,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-view > .ayc-h:first-child { margin-top: 8px; }
 #ayc-overlay .ayc-h > i { color: var(--ayc-accent); }
 #ayc-overlay .ayc-h small { font-weight: 400; font-size: 12px; color: var(--ayc-dim); }
-#ayc-overlay code { font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--ayc-surface2); color: var(--ayc-accent); }
+#ayc-overlay code { font-size: 12px; padding: 1px 5px; border-radius: var(--ayc-r-ctl); background: var(--ayc-surface2); color: var(--ayc-accent); }
 #ayc-overlay .ayc-grow { flex: 1; min-width: 0; }
 #ayc-overlay .ayc-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 #ayc-overlay .ayc-mt { margin-top: 12px; }
@@ -183,7 +185,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 7px;
     min-height: 38px; padding: 6px 14px; font-size: 14px;
-    border: 1px solid var(--ayc-border); border-radius: 10px;
+    border: 1px solid var(--ayc-border); border-radius: var(--ayc-r-ctl);
     background: var(--ayc-surface2);
     user-select: none; -webkit-user-select: none;
     transition: background 0.15s, border-color 0.15s;
@@ -194,7 +196,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-primary { background: var(--ayc-accent); border-color: var(--ayc-accent); color: var(--ayc-on-accent) !important; font-weight: 700; }
 #ayc-overlay .ayc-btn-danger { color: var(--ayc-high) !important; border-color: color-mix(in srgb, var(--ayc-high) 50%, transparent); }
 #ayc-overlay .ayc-icon {
-    width: 38px; height: 38px; flex: none; border: 0; border-radius: 10px;
+    width: 38px; height: 38px; flex: none; border: 0; border-radius: var(--ayc-r-ctl);
     display: inline-grid; place-items: center;
     background: none; font-size: 16px; color: var(--ayc-fg);
 }
@@ -204,11 +206,11 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 
 #ayc-overlay .ayc-fab {
     position: absolute; right: 18px; bottom: calc(74px + env(safe-area-inset-bottom)); z-index: 5;
-    width: 54px; height: 54px; border-radius: 17px; border: 0;
+    width: 54px; height: 54px; border-radius: var(--ayc-radius); border: 0;
     display: grid; place-items: center;
-    background: linear-gradient(135deg, var(--ayc-accent), color-mix(in srgb, var(--ayc-accent) 60%, #b04bd6));
-    color: #fff; font-size: 22px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 8px 24px color-mix(in srgb, var(--ayc-accent) 40%, rgba(0, 0, 0, 0.4));
+    background: var(--ayc-accent);
+    color: var(--ayc-on-accent); font-size: 22px;
+    box-shadow: var(--ayc-shadow);
     transition: scale 0.1s;
 }
 #ayc-overlay .ayc-fab:active { scale: 0.94; }
@@ -216,7 +218,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 /* ── inputs ── */
 #ayc-overlay .ayc-input {
     width: 100%; min-height: 40px; margin: 0; padding: 7px 11px;
-    border: 1px solid var(--ayc-border); border-radius: 10px;
+    border: 1px solid var(--ayc-border); border-radius: var(--ayc-r-ctl);
     background: var(--ayc-surface2); color: var(--ayc-fg);
     font: inherit; font-size: 16px; /* 16px กัน iOS ซูมเข้า */
     outline: none; transition: border-color 0.15s, box-shadow 0.15s;
@@ -236,9 +238,9 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 /* ── switch (สีไล่เฉดแบบ Lore Master) ── */
 #ayc-overlay .ayc-switch { position: relative; display: inline-block; width: 42px; height: 24px; flex: none; margin: 0; cursor: pointer; }
 #ayc-overlay .ayc-switch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
-#ayc-overlay .ayc-knob { position: absolute; inset: 0; border-radius: 12px; background: color-mix(in srgb, var(--ayc-fg) 14%, transparent); border: 1px solid var(--ayc-border); transition: background 0.18s; }
-#ayc-overlay .ayc-knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: left 0.18s cubic-bezier(.3, 1.4, .6, 1); }
-#ayc-overlay .ayc-switch input:checked + .ayc-knob { background: var(--ayc-grad); border-color: transparent; }
+#ayc-overlay .ayc-knob { position: absolute; inset: 0; border-radius: var(--ayc-radius); background: color-mix(in srgb, var(--ayc-fg) 14%, transparent); border: 1px solid var(--ayc-border); transition: background 0.18s; }
+#ayc-overlay .ayc-knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: var(--ayc-r-pill); background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: left 0.18s cubic-bezier(.3, 1.4, .6, 1); } /* slop-ok: the switch knob slides inside a 42px track */
+#ayc-overlay .ayc-switch input:checked + .ayc-knob { background: var(--ayc-accent); border-color: transparent; }
 #ayc-overlay .ayc-switch input:checked + .ayc-knob::after { left: 20px; }
 #ayc-overlay .ayc-switch input:focus-visible + .ayc-knob { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ayc-accent) 35%, transparent); }
 
@@ -253,7 +255,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 }
 #ayc-overlay .ayc-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--st); opacity: 0.5; transition: opacity 0.15s; }
 #ayc-overlay .ayc-card.ayc-on { --st: var(--ayc-accent); border-color: color-mix(in srgb, var(--ayc-accent) 45%, var(--ayc-soft)); background: color-mix(in srgb, var(--ayc-accent) 7%, var(--ayc-surface)); }
-#ayc-overlay .ayc-card.ayc-on::before { background: linear-gradient(180deg, var(--ayc-purple), var(--ayc-accent)); opacity: 1; }
+#ayc-overlay .ayc-card.ayc-on::before { background: var(--ayc-accent); opacity: 1; }
 #ayc-overlay .ayc-card.ayc-once.ayc-on { --st: var(--ayc-once); }
 #ayc-overlay .ayc-card.ayc-once.ayc-on::before { background: var(--ayc-once); }
 #ayc-overlay .ayc-card:not(.ayc-on) .ayc-card-main { opacity: 0.72; }
@@ -278,7 +280,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 
 #ayc-overlay .ayc-tag {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 1px 8px; border-radius: 10px;
+    padding: 1px 8px; border-radius: var(--ayc-r-ctl);
     font-size: 11.5px; font-weight: 600; white-space: nowrap;
     background: var(--ayc-surface2); color: var(--ayc-dim);
 }
@@ -308,7 +310,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
  *   เปิดอยู่           → พื้นสีเน้น สวิตช์เปิด "ทุกแชท · เปิดอยู่" */
 #ayc-overlay .ayc-add {
     display: inline-flex; align-items: center; gap: 7px;
-    min-height: 34px; padding: 3px 12px; border-radius: 17px;
+    min-height: 34px; padding: 3px 12px; border-radius: var(--ayc-r-pill);
     border: 1px dashed var(--ayc-border); background: transparent;
     color: var(--ayc-dim); font-size: 12.5px; font-weight: 600; white-space: nowrap;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -327,13 +329,13 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 }
 #ayc-overlay .ayc-add:disabled { opacity: 0.35; cursor: not-allowed; }
 #ayc-overlay .ayc-lib.ayc-on { position: relative; overflow: hidden; }
-#ayc-overlay .ayc-lib.ayc-on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, var(--ayc-purple), var(--ayc-accent)); }
+#ayc-overlay .ayc-lib.ayc-on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--ayc-accent); }
 
 /* ── empty ── */
 #ayc-overlay .ayc-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 48px 20px 24px; color: var(--ayc-dim); }
 #ayc-overlay .ayc-empty-icon {
     width: 60px; height: 60px; display: grid; place-items: center; margin-bottom: 4px;
-    border-radius: 18px; font-size: 24px;
+    border-radius: var(--ayc-r-panel); font-size: 24px;
     background: color-mix(in srgb, var(--ayc-accent) 16%, transparent); color: var(--ayc-accent);
 }
 #ayc-overlay .ayc-empty-title { color: var(--ayc-fg); font-weight: 700; font-size: 15px; }
@@ -357,27 +359,27 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-poslist { display: flex; flex-direction: column; gap: 6px; }
 #ayc-overlay .ayc-pos {
     display: flex; gap: 10px; align-items: center; text-align: left;
-    padding: 9px 10px; border-radius: 12px; border: 1px solid var(--ayc-soft); background: none;
+    padding: 9px 10px; border-radius: var(--ayc-radius); border: 1px solid var(--ayc-soft); background: none;
 }
 #ayc-overlay .ayc-pos b { display: block; font-weight: 600; }
 #ayc-overlay .ayc-pos small { display: block; font-size: 12px; color: var(--ayc-dim); line-height: 1.4; margin-top: 1px; }
 #ayc-overlay .ayc-pos:not(.ayc-on) small { display: none; }
 #ayc-overlay .ayc-pos.ayc-on { border-color: var(--ayc-accent); background: color-mix(in srgb, var(--ayc-accent) 10%, transparent); }
-#ayc-overlay .ayc-pos-tag { flex: none; min-width: 78px; text-align: center; font-size: 12px; font-weight: 700; padding: 3px 6px; border-radius: 8px; background: var(--ayc-surface2); }
+#ayc-overlay .ayc-pos-tag { flex: none; min-width: 78px; text-align: center; font-size: 12px; font-weight: 700; padding: 3px 6px; border-radius: var(--ayc-r-ctl); background: var(--ayc-surface2); }
 #ayc-overlay .ayc-pos.ayc-on .ayc-pos-tag { background: var(--ayc-accent); color: var(--ayc-on-accent); }
 
-#ayc-overlay .ayc-seg { display: grid; gap: 3px; padding: 3px; border-radius: 11px; background: var(--ayc-surface2); }
+#ayc-overlay .ayc-seg { display: grid; gap: 3px; padding: 3px; border-radius: var(--ayc-radius); background: var(--ayc-surface2); }
 #ayc-overlay .ayc-seg3 { grid-template-columns: repeat(3, 1fr); }
 #ayc-overlay .ayc-seg2 { grid-template-columns: repeat(2, 1fr); }
 #ayc-overlay .ayc-segbtn {
-    min-height: 36px; border: 0; border-radius: 8px; background: none; font-size: 13.5px;
+    min-height: 36px; border: 0; border-radius: var(--ayc-r-ctl); background: none; font-size: 13.5px;
     display: inline-flex; gap: 6px; align-items: center; justify-content: center; font-weight: 600; color: var(--ayc-dim);
 }
 #ayc-overlay .ayc-segbtn.ayc-on { background: var(--ayc-bg); color: var(--ayc-fg); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
 #ayc-overlay .ayc-segbtn.ayc-on i { color: var(--ayc-accent); }
 #ayc-overlay .ayc-segbtn:disabled { opacity: 0.4; }
 #ayc-overlay .ayc-verline { font-size: 13px; margin-bottom: 10px; }
-#ayc-overlay .ayc-stale, .ayc-settings-panel .ayc-stale { color: #f5a524; font-weight: 600; }
+#ayc-overlay .ayc-stale, .ayc-settings-panel .ayc-stale { color: var(--ayc-p-warn, #f5a524); font-weight: 600; }
 
 /* ── bottom nav ── */
 #ayc-overlay .ayc-nav {
@@ -393,10 +395,9 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 }
 #ayc-overlay .ayc-navbtn i { font-size: 17px; }
 #ayc-overlay .ayc-navbtn.ayc-on { color: var(--ayc-accent); font-weight: 600; }
-#ayc-overlay .ayc-navbtn.ayc-on i { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ayc-accent) 50%, transparent)); }
 #ayc-overlay .ayc-navbadge {
     position: absolute; top: 4px; left: calc(50% + 6px);
-    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--ayc-r-ctl);
     background: var(--ayc-accent); color: var(--ayc-on-accent);
     font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
 }
@@ -412,21 +413,20 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-sheet {
     position: relative; width: 100%; max-width: 600px; max-height: 88%;
     display: flex; flex-direction: column;
-    background: var(--ayc-bg); border: 1px solid var(--ayc-border); border-bottom: 0; border-radius: 20px 20px 0 0;
-    backdrop-filter: blur(24px) saturate(1.2); -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    background: var(--ayc-bg); border: 1px solid var(--ayc-border); border-bottom: 0; border-radius: var(--ayc-r-panel) var(--ayc-r-panel) 0 0;
     padding: 6px 10px calc(10px + env(safe-area-inset-bottom));
     box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.35);
     animation: ayc-up 0.18s ease-out;
 }
-#ayc-overlay .ayc-closing .ayc-sheet { animation: ayc-down 0.16s ease-in forwards; }
-#ayc-overlay .ayc-grab { width: 40px; height: 5px; border-radius: 3px; background: var(--ayc-border); margin: 4px auto 8px; flex: none; }
+#ayc-overlay .ayc-closing .ayc-sheet { animation: ayc-down 0.16s ease-in forwards; } /* slop-ok: an exit, faster than the entrance and the way it came */
+#ayc-overlay .ayc-grab { width: 40px; height: 5px; border-radius: var(--ayc-r-pill); background: var(--ayc-border); margin: 4px auto 8px; flex: none; }
 #ayc-overlay .ayc-sheet-title { font-weight: 700; padding: 2px 8px; overflow-wrap: anywhere; display: flex; gap: 10px; align-items: center; }
 #ayc-overlay .ayc-sheet-title i { color: var(--ayc-accent); }
 #ayc-overlay .ayc-sheet-sub { font-size: 12.5px; color: var(--ayc-dim); padding: 0 8px; }
 #ayc-overlay .ayc-sheet-items { overflow-y: auto; margin: 6px 0; }
 #ayc-overlay .ayc-sheet-item {
     display: flex; gap: 14px; align-items: center; width: 100%; text-align: left;
-    min-height: 46px; padding: 7px 10px; border: 0; border-radius: 10px; background: none;
+    min-height: 46px; padding: 7px 10px; border: 0; border-radius: var(--ayc-r-ctl); background: none;
 }
 #ayc-overlay .ayc-sheet-item:focus-visible { background: var(--ayc-surface2); outline: none; }
 @media (hover: hover) { #ayc-overlay .ayc-sheet-item:hover:not(:disabled) { background: var(--ayc-surface2); } }
@@ -435,7 +435,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-sheet-item.ayc-danger, #ayc-overlay .ayc-sheet-item.ayc-danger > i:first-child { color: var(--ayc-high); }
 #ayc-overlay .ayc-sheet-item:disabled { opacity: 0.4; }
 #ayc-overlay .ayc-sep { height: 1px; background: var(--ayc-soft); margin: 4px 8px; }
-#ayc-overlay .ayc-sheet-cancel { min-height: 44px; border: 0; border-radius: 10px; background: var(--ayc-surface2); font-weight: 600; }
+#ayc-overlay .ayc-sheet-cancel { min-height: 44px; border: 0; border-radius: var(--ayc-r-ctl); background: var(--ayc-surface2); font-weight: 600; }
 
 #ayc-overlay .ayc-sheet-form { padding-left: 0; padding-right: 0; }
 #ayc-overlay .ayc-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 4px 10px; }
@@ -445,9 +445,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 
 #ayc-overlay .ayc-dialog {
     position: relative; width: 100%; max-width: 420px; padding: 18px;
-    background: var(--ayc-bg); border: 1px solid var(--ayc-border); border-radius: 18px;
+    background: var(--ayc-bg); border: 1px solid var(--ayc-border); border-radius: var(--ayc-r-panel);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
     animation: ayc-fade 0.15s;
 }
 #ayc-overlay .ayc-closing .ayc-dialog { opacity: 0; transition: opacity 0.15s; }
@@ -460,7 +459,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-meta i { margin-right: 6px; color: var(--ayc-accent); }
 #ayc-overlay .ayc-preview {
     margin: 0; padding: 14px; max-height: 50vh; overflow: auto;
-    border-radius: 12px; border: 1px solid var(--ayc-soft); background: var(--ayc-surface);
+    border-radius: var(--ayc-radius); border: 1px solid var(--ayc-soft); background: var(--ayc-surface);
     font-family: var(--monoFontFamily, ui-monospace, monospace); font-size: 13px; line-height: 1.55;
     white-space: pre-wrap; word-break: break-word; color: var(--ayc-fg);
 }
@@ -475,8 +474,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 /* ── wand menu + drawer ── */
 #ayc_wand { position: relative; }
 #ayc_wand .ayc-wand-badge {
-    margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px;
-    background: var(--SmartThemeQuoteColor); color: var(--SmartThemeBlurTintColor);
+    margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: var(--ayc-r-pill);
+    background: var(--ayc-p-accent, var(--SmartThemeQuoteColor)); color: var(--ayc-p-on-accent, var(--SmartThemeBlurTintColor));
     font-size: 0.75em; text-align: center; line-height: 18px;
 }
 #ayc_wand .ayc-wand-badge:empty { display: none; }
@@ -500,8 +499,8 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     --ayc-lline: color-mix(in srgb, var(--SmartThemeBodyColor, #dcdcd2) 16%, transparent);
     --ayc-lsize: 48px;
     --ayc-licon: 21px;
-    --ayc-lbg: linear-gradient(135deg, var(--ayc-laccent), color-mix(in srgb, var(--ayc-laccent) 60%, #b04bd6));
-    --ayc-lfg: #fff;
+    --ayc-lbg: var(--ayc-p-accent, var(--ayc-laccent));
+    --ayc-lfg: var(--ayc-p-on-accent, #fff);
     --ayc-lop: 1;
     position: relative;
     width: var(--ayc-lsize);
@@ -521,7 +520,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc_launcher {
     position: fixed;
     z-index: 3012;
-    transition: left 0.18s ease-out, top 0.18s ease-out, opacity 0.2s, scale 0.12s;
+    transition: left 0.18s ease-out, top 0.18s ease-out, opacity 0.2s, scale 0.12s; /* slop-ok: placed by left/top on purpose (overlays skill, trap 1) */
 }
 #ayc_launcher:focus-visible, #ayc_launcher.ayc-dragging { opacity: 1; }
 @media (hover: hover) { #ayc_launcher:hover { opacity: 1; scale: 1.06; } }
@@ -540,7 +539,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     justify-content: center;
     gap: 6px;
     min-width: 0;
-    border-radius: 50%;
+    border-radius: var(--ayc-r-pill);
     overflow: hidden;
     color: var(--ayc-lfg);
     background: var(--ayc-lbg);
@@ -549,8 +548,6 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     font-size: var(--ayc-licon);
     line-height: 1;
 }
-.ayc-launch[data-bg="auto"] .ayc-lshape { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28); }
-.ayc-launch[data-bg="auto"]:not([data-shape="sticker"]) :is(.ayc-licon, .ayc-llabel) { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
 /* ไม่มีพื้น: ขอบบาง ๆ สีพื้น UI ของธีม ให้ไอคอนอ่านออกบนแชททุกแบบ */
 :is(.ayc-launch[data-bg="none"], .ayc-launch[data-shape="sticker"]) :is(.ayc-licon, .ayc-llabel) { filter: drop-shadow(0 0 1px var(--ayc-lring, #000)) drop-shadow(0 0 1px var(--ayc-lring, #000)); }
 .ayc-launch[data-border="1"] .ayc-lshape { box-shadow: inset 0 0 0 1.5px var(--ayc-lline); }
@@ -560,13 +557,13 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 .ayc-launch[data-fit="contain"] .ayc-limg { object-fit: contain; width: 82%; height: 82%; }
 .ayc-llabel { display: none; font: 700 calc(var(--ayc-licon) * 0.72) / 1 var(--mainFontFamily, sans-serif); white-space: nowrap; pointer-events: none; }
 
-.ayc-launch[data-shape="squircle"] .ayc-lshape { border-radius: 30%; }
-.ayc-launch[data-shape="bubble"] .ayc-lshape { border-radius: 50% 50% 50% 14%; }
-.ayc-launch[data-edge="right"][data-shape="bubble"] .ayc-lshape { border-radius: 50% 50% 14% 50%; }
+.ayc-launch[data-shape="squircle"] .ayc-lshape { border-radius: 30%; } /* slop-ok: a shape the user picks */
+.ayc-launch[data-shape="bubble"] .ayc-lshape { border-radius: var(--ayc-r-pill) 50% 50% 14%; } /* slop-ok: a shape the user picks */
+.ayc-launch[data-edge="right"][data-shape="bubble"] .ayc-lshape { border-radius: var(--ayc-r-pill) 50% 14% 50%; } /* slop-ok: a shape the user picks */
 .ayc-launch[data-shape="pill"] { width: auto; min-width: var(--ayc-lsize); }
-.ayc-launch[data-shape="pill"] .ayc-lshape { border-radius: 999px; padding: 0 calc(var(--ayc-lsize) * 0.32); }
+.ayc-launch[data-shape="pill"] .ayc-lshape { border-radius: var(--ayc-r-pill); padding: 0 calc(var(--ayc-lsize) * 0.32); }
 .ayc-launch[data-shape="pill"] .ayc-llabel { display: inline; }
-.ayc-launch[data-shape="pill"] .ayc-limg { width: calc(var(--ayc-lsize) * 0.7); height: calc(var(--ayc-lsize) * 0.7); border-radius: 50%; flex: none; }
+.ayc-launch[data-shape="pill"] .ayc-limg { width: calc(var(--ayc-lsize) * 0.7); height: calc(var(--ayc-lsize) * 0.7); border-radius: var(--ayc-r-pill); flex: none; }
 .ayc-launch[data-masked="1"] .ayc-lshape {
     border-radius: 0;
     -webkit-mask: var(--ayc-lmask) center / 100% 100% no-repeat;
@@ -578,13 +575,13 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 .ayc-launch[data-shape="sticker"] .ayc-licon, .ayc-launch[data-shape="sticker"] .ayc-lemoji { font-size: calc(var(--ayc-lsize) * 0.78); }
 
 /* การเคลื่อนไหว (ที่รูปทรง ตอนลากและตัวเลขจึงนิ่ง) */
-.ayc-launch[data-anim="float"] .ayc-lshape { animation: ayc-lfloat 3.2s ease-in-out infinite; }
-.ayc-launch[data-anim="sway"] .ayc-lshape { animation: ayc-lsway 3.6s ease-in-out infinite; transform-origin: 50% 85%; }
-.ayc-launch[data-anim="pulse"] .ayc-lshape { animation: ayc-lpulse 2.2s ease-in-out infinite; }
-.ayc-launch[data-anim="spin"] .ayc-licon, .ayc-launch[data-anim="spin"] .ayc-lemoji, .ayc-launch[data-anim="spin"] .ayc-limg { animation: ayc-lspin 9s linear infinite; }
-.ayc-launch[data-anim="glow"] { animation: ayc-lglow 2.6s ease-in-out infinite; }
+.ayc-launch[data-anim="float"] .ayc-lshape { animation: ayc-lfloat 3.2s ease-in-out infinite; } /* slop-ok: launcher motion the user picks */
+.ayc-launch[data-anim="sway"] .ayc-lshape { animation: ayc-lsway 3.6s ease-in-out infinite; transform-origin: 50% 85%; } /* slop-ok: launcher motion the user picks */
+.ayc-launch[data-anim="pulse"] .ayc-lshape { animation: ayc-lpulse 2.2s ease-in-out infinite; } /* slop-ok: launcher motion the user picks */
+.ayc-launch[data-anim="spin"] .ayc-licon, .ayc-launch[data-anim="spin"] .ayc-lemoji, .ayc-launch[data-anim="spin"] .ayc-limg { animation: ayc-lspin 9s linear infinite; } /* slop-ok: launcher motion the user picks */
+.ayc-launch[data-anim="glow"] { animation: ayc-lglow 2.6s ease-in-out infinite; } /* slop-ok: launcher motion the user picks */
 .ayc-launch[data-anim="nudge"][data-active="1"] .ayc-lshape,
-.ayc-look-stage .ayc-launch[data-anim="nudge"] .ayc-lshape { animation: ayc-lnudge 2.8s ease-in-out infinite; transform-origin: 50% 100%; }
+.ayc-look-stage .ayc-launch[data-anim="nudge"] .ayc-lshape { animation: ayc-lnudge 2.8s ease-in-out infinite; transform-origin: 50% 100%; } /* slop-ok: launcher motion the user picks */
 @keyframes ayc-lfloat { 50% { transform: translateY(-5px); } }
 @keyframes ayc-lsway { 25% { transform: rotate(-7deg); } 75% { transform: rotate(7deg); } }
 @keyframes ayc-lpulse { 50% { transform: scale(1.08); } }
@@ -613,7 +610,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
     height: 18px;
     padding: 0 5px;
     box-sizing: border-box;
-    border-radius: 999px;
+    border-radius: var(--ayc-r-pill);
     font: 700 10.5px/18px var(--mainFontFamily, sans-serif);
     font-variant-numeric: tabular-nums;
     text-align: center;
@@ -640,10 +637,9 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-look [hidden] { display: none !important; }
 #ayc-overlay .ayc-look-top { display: flex; gap: 12px; align-items: center; margin: 4px 0 6px; }
 #ayc-overlay .ayc-look-stage {
-    flex: none; width: 112px; height: 112px; border-radius: 14px;
+    flex: none; width: 112px; height: 112px; border-radius: var(--ayc-radius);
     display: flex; align-items: center; justify-content: center;
     background:
-        radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--ayc-accent) 18%, transparent), transparent 60%),
         repeating-conic-gradient(color-mix(in srgb, var(--ayc-fg) 6%, transparent) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
     border: 1px solid var(--ayc-soft);
 }
@@ -651,12 +647,12 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-look-label-first { margin-top: 0; }
 #ayc-overlay .ayc-look-label small { font-weight: 400; }
 #ayc-overlay .ayc-look-presets { display: flex; flex-wrap: wrap; gap: 6px; }
-#ayc-overlay .ayc-chipbtn { min-height: 30px; padding: 3px 11px; border-radius: 15px; border: 1px solid var(--ayc-border); background: var(--ayc-surface); font-size: 12.5px; }
+#ayc-overlay .ayc-chipbtn { min-height: 30px; padding: 3px 11px; border-radius: var(--ayc-r-pill); border: 1px solid var(--ayc-border); background: var(--ayc-surface); font-size: 12.5px; }
 #ayc-overlay .ayc-look-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 #ayc-overlay .ayc-look-grid button {
     width: 40px; height: 40px; padding: 0;
     display: grid; place-items: center;
-    border-radius: 10px; border: 1px solid var(--ayc-soft); background: var(--ayc-surface);
+    border-radius: var(--ayc-r-ctl); border: 1px solid var(--ayc-soft); background: var(--ayc-surface);
     color: var(--ayc-fg); font-size: 16px;
 }
 #ayc-overlay .ayc-look-grid button.ayc-on { border-color: var(--ayc-accent); color: var(--ayc-accent); background: color-mix(in srgb, var(--ayc-accent) 14%, transparent); }
@@ -664,7 +660,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay .ayc-look-rows { display: grid; grid-template-columns: auto 1fr; gap: 9px 12px; align-items: center; margin-top: 12px; font-size: 13px; }
 #ayc-overlay .ayc-look-rows > span { color: var(--ayc-dim); font-weight: 600; }
 #ayc-overlay .ayc-look-inline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-#ayc-overlay .ayc-look-inline input[type="color"] { width: 40px; height: 34px; padding: 0; border: 1px solid var(--ayc-border); border-radius: 8px; background: none; }
+#ayc-overlay .ayc-look-inline input[type="color"] { width: 40px; height: 34px; padding: 0; border: 1px solid var(--ayc-border); border-radius: var(--ayc-r-ctl); background: none; }
 #ayc-overlay .ayc-select { width: auto; min-height: 36px; padding: 4px 8px; font-size: 14px; }
 #ayc-overlay .ayc-select option { color: #111; background: #fff; }
 #ayc-overlay .ayc-btn-sm { min-height: 34px; padding: 4px 10px; font-size: 13px; }
@@ -676,7 +672,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
    และ !important ของเราแพ้ทันทีถ้า specificity ต่ำกว่า */
 #ayc-overlay .ayc-valbox {
     flex: none; display: inline-flex; align-items: center; gap: 2px; margin: 0;
-    height: 34px; padding: 0 9px 0 6px; border-radius: 9px;
+    height: 34px; padding: 0 9px 0 6px; border-radius: var(--ayc-r-ctl);
     border: 1px solid var(--ayc-border); background: var(--ayc-surface2);
     font-variant-numeric: tabular-nums; cursor: text;
 }
@@ -708,7 +704,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 #ayc-overlay { --ayc-solid: var(--ayc-bg); }
 @supports (color: rgb(from red r g b / 1)) {
     #ayc-overlay { --ayc-solid: rgb(from var(--ayc-bg) r g b / 1); }
-    #ayc_wand .ayc-wand-badge { color: rgb(from var(--SmartThemeBlurTintColor) r g b / 1); }
+    #ayc_wand .ayc-wand-badge { color: var(--ayc-p-on-accent, rgb(from var(--SmartThemeBlurTintColor) r g b / 1)); }
 }
 #ayc-overlay .ayc-fchip.ayc-on { color: var(--ayc-solid); }
 body.no-blur #ayc-overlay :is(.ayc-shell, .ayc-sheet, .ayc-dialog) { background: var(--ayc-solid); }
@@ -727,3 +723,17 @@ html.ayc-pal :is(#ayc-overlay:not([data-scheme="light"]):not([data-scheme="dark"
 }
 html.ayc-pal #ayc-overlay[data-scheme="light"] { --ayc-accent: var(--ayc-p-accent-light); --ayc-on-accent: #ffffff; }
 html.ayc-pal #ayc-overlay[data-scheme="dark"] { --ayc-accent: var(--ayc-p-accent-dark); }
+
+/* ST's plain .menu_button is display:flex, which drops the space between an icon and its
+   label. Zero-specificity roots, so a gap this extension already sets still wins. */
+:where([class^="ayc-"], [class*=" ayc-"], [id^="ayc"]) .menu_button { gap: 0.4em; }
+
+/* ST draws inputs with a grey film (var(--black30a)) that turns muddy on light themes.
+   In these panels, once the palette is ready, inputs take its card surface and readable
+   text instead, so no custom CSS is needed. */
+html.ayc-pal :where(#ayc-overlay:not([data-scheme="light"]):not([data-scheme="dark"]), .ayc-settings-panel) :is(.text_pole, textarea, select, input:is([type="text"], [type="search"], [type="number"], [type="url"], [type="email"], [type="password"], :not([type]))) {
+    background-color: var(--ayc-p-surface2);
+    color: var(--ayc-p-fg);
+    border-color: var(--ayc-p-line);
+}
+html.ayc-pal :where(#ayc-overlay:not([data-scheme="light"]):not([data-scheme="dark"]), .ayc-settings-panel) :is(.text_pole, textarea, input)::placeholder { color: var(--ayc-p-muted); opacity: 1; }
