@@ -4,7 +4,7 @@
 // หน้าตาแต่งได้แบบเดียวกับ Chat Browser: รูปทรง ไอคอน อีโมจิ รูปภาพ สี ขนาด การเคลื่อนไหว
 // ไม่ใช้ transform กับตัวปุ่มที่ fixed เพราะ ST ใส่ 3D perspective ไว้ที่ <html>
 
-import { parseColor, contrast, ensureContrast } from './theme-palette.js';
+import { parseColor, ensureContrast, fillFor } from './theme-palette.js';
 import { floatColors, COLOR_MODE_LABELS } from './float-colors.js';
 
 export const LAUNCH_POS_DEFAULT = Object.freeze({ x: 1, y: 0.45, edge: 'right' });
@@ -53,7 +53,7 @@ const PRESETS = [
     ['ดอกไม้', { shape: 'flower', icon: 'fa-seedling', bg: 'custom', bgColor: '#b7e4c7', fg: 'custom', fgColor: '#2d6a4f', anim: 'sway', size: 54, iconSize: 36 }],
     ['แคปซูล', { shape: 'pill', icon: 'fa-scroll', label: 'OOC', size: 40, iconSize: 45 }],
     ['ก้อนเมฆ', { shape: 'cloud', icon: 'fa-wand-magic-sparkles', bg: 'custom', bgColor: '#e8eefc', fg: 'custom', fgColor: '#5468a8', anim: 'float', size: 58, iconSize: 32 }],
-    ['สติกเกอร์', { shape: 'sticker', emoji: '📜', anim: 'nudge', size: 52 }],
+    ['สติกเกอร์', { shape: 'sticker', emoji: '📜', anim: 'nudge', size: 52 }], // slop-ok: a sticker IS an emoji the user picks
 ];
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -90,8 +90,6 @@ export function look() {
     return L;
 }
 
-const LOGO_PURPLE = [176, 75, 214];
-const WHITE = [255, 255, 255];
 const INK = [20, 20, 24];
 const rgbStr = c => `rgb(${c.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(', ')})`;
 const rgbOf = str => parseColor(str)?.slice(0, 3) ?? null;
@@ -105,25 +103,17 @@ function lookColors(L) {
     if (!c) return null;
     let lbg = null, lfg = c.accentText;
     if (L.bg === 'auto' && L.shape !== 'sticker') {
-        // ไล่สีแบบโลโก้ในโทนของธีม: สีเน้นของธีม → สีเน้นที่จางเข้าหาพื้น UI · ไอคอนขาวหรือเข้ม แล้วแต่อันไหนตัดกับทั้งสองปลายมากกว่า
-        const a = rgbOf(c.accent) ?? LOGO_PURPLE;
-        const ui = rgbOf(c.ring) ?? INK;
-        const b = a.map((v, i) => v * 0.65 + ui[i] * 0.35);
-        const on = Math.min(contrast(WHITE, a), contrast(WHITE, b)) >= Math.min(contrast(INK, a), contrast(INK, b)) ? WHITE : INK;
-        lbg = `linear-gradient(135deg, ${rgbStr(a)}, ${rgbStr(b)})`;
-        lfg = rgbStr(on);
+        // พื้นสีเน้นของธีมแบบทึบ (ไม่ไล่สี) ตัวอักษร on-accent: ขาว ≥4.5:1 หรือเข้ม ≥7:1 (float-colors.js)
+        lbg = c.accent;
+        lfg = c.onAccent;
     } else if (L.bg === 'surface') lbg = `color-mix(in srgb, ${c.bg} 80%, transparent)`;
     else if (L.bg === 'custom') lbg = L.bgColor;
     else lbg = 'transparent';
     if (L.fg === 'custom') lfg = L.fgColor;
     // ตัวเลข: เขียวแบบจุด "กำลังสั่ง" ปรับให้เห็นชัดบนพื้นปุ่ม
     const ring = rgbOf(c.ring) ?? INK;
-    let green = ensureContrast([47, 168, 79], ring, 3);
-    const badgeFg = contrast(WHITE, green) >= contrast(INK, green) ? WHITE : INK;
-    if (contrast(badgeFg, green) < 4.5) { // ตัวเลขเป็นตัวอักษร: ขยับเขียวออกจากสีตัวเลขอีกนิด ถ้ายังเห็นชัดบนพื้นปุ่ม
-        const g2 = ensureContrast(green, badgeFg, 4.5);
-        if (contrast(g2, ring) >= 3) green = g2;
-    }
+    // ตัวเลขเป็นตัวอักษรบนพื้นเขียว: ขาว ≥4.5:1 หรือเข้ม ≥7:1 และเขียวยังเห็นชัดบนพื้นปุ่ม (≥3:1)
+    const { fill: green, on: badgeFg } = fillFor(ensureContrast([47, 168, 79], ring, 3), ring, 3);
     return { lbg, lfg, line: c.border, ring: c.ring, badge: rgbStr(green), badgeFg: rgbStr(badgeFg) };
 }
 
@@ -352,7 +342,7 @@ export function lookEditorHtml() {
   <span class="ayc-look-label">ไอคอน <small>หรือใช้อีโมจิ / รูป ด้านล่าง</small></span>
   <div class="ayc-look-grid" data-group="icon">${ICONS.map(v => `<button type="button" data-v="${v}"><i class="fa-solid ${v}"></i></button>`).join('')}</div>
   <div class="ayc-look-rows">
-    <span>อีโมจิ</span><input type="text" class="ayc-input" data-k="emoji" maxlength="8" placeholder="เช่น 📜 🪄 ✨" value="${esc(L.emoji)}" autocomplete="off">
+    <span>อีโมจิ</span><input type="text" class="ayc-input" data-k="emoji" maxlength="8" placeholder="เช่น 📜 🪄 ✨" value="${esc(L.emoji)}" autocomplete="off"><!-- slop-ok: examples for the emoji the user picks -->
     <span>รูปภาพ</span>
     <div class="ayc-look-inline">
       <button type="button" class="ayc-btn ayc-btn-sm" data-img="upload"><i class="fa-solid fa-image"></i> เลือกรูป</button>
