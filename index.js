@@ -11,7 +11,7 @@ import { initLauncher, refreshLooks, renderLauncher, updateLauncherBadge, resetL
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.3.1'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.3.2'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];

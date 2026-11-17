@@ -4,7 +4,7 @@
 // หน้าตาแต่งได้แบบเดียวกับ Chat Browser: รูปทรง ไอคอน อีโมจิ รูปภาพ สี ขนาด การเคลื่อนไหว
 // ไม่ใช้ transform กับตัวปุ่มที่ fixed เพราะ ST ใส่ 3D perspective ไว้ที่ <html>
 
-import { parseColor, ensureContrast, fillFor } from './theme-palette.js';
+import { parseColor } from './theme-palette.js';
 import { floatColors, COLOR_MODE_LABELS } from './float-colors.js';
 
 export const LAUNCH_POS_DEFAULT = Object.freeze({ x: 1, y: 0.45, edge: 'right' });
@@ -90,7 +90,6 @@ export function look() {
     return L;
 }
 
-const INK = [20, 20, 24];
 const rgbStr = c => `rgb(${c.map(v => Math.round(Math.max(0, Math.min(255, v)))).join(', ')})`;
 const rgbOf = str => parseColor(str)?.slice(0, 3) ?? null;
 
@@ -111,10 +110,8 @@ function lookColors(L) {
     else lbg = 'transparent';
     if (L.fg === 'custom') lfg = L.fgColor;
     // ตัวเลข: เขียวแบบจุด "กำลังสั่ง" ปรับให้เห็นชัดบนพื้นปุ่ม
-    const ring = rgbOf(c.ring) ?? INK;
-    // ตัวเลขเป็นตัวอักษรบนพื้นเขียว: ขาว ≥4.5:1 หรือเข้ม ≥7:1 และเขียวยังเห็นชัดบนพื้นปุ่ม (≥3:1)
-    const { fill: green, on: badgeFg } = fillFor(ensureContrast([47, 168, 79], ring, 3), ring, 3);
-    return { lbg, lfg, line: c.border, ring: c.ring, badge: rgbStr(green), badgeFg: rgbStr(badgeFg) };
+    // ป้ายตัวเลขแบบเดียวกับปุ่มลอยทุกตัวในชุด (float-colors.js): พื้นสีเน้นของธีม ตัวอักษร onAccent
+    return { lbg, lfg, line: c.border, ring: c.ring, badge: c.accent, badgeFg: c.onAccent };
 }
 
 /** วาดปุ่มทุกอัน (ตัวจริงและตัวอย่าง) ใหม่ เช่น หลังเปลี่ยนธีม */
