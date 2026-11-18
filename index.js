@@ -8,6 +8,7 @@
 
 import { STARTERS, CATEGORIES } from './starters.js';
 import { installThemePalette } from './theme-palette.js';
+import { initNoteWin, renderNoteWin, openNoteWin, toggleNoteWin, isNoteWinOpen } from './notewin.js';
 import { initLauncher, refreshLooks, renderLauncher, updateLauncherBadge, resetLauncherPos, resetLook, lookEditorHtml, mountLookEditor, LAUNCH_POS_DEFAULT } from './launcher.js';
 
 const MODULE = 'as_you_command';
@@ -15,7 +16,7 @@ const LOG = '[As you command]';
 const VERSION = '1.4.0'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
-const FILES = ['index.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];
+const FILES = ['index.js', 'notewin.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];
 
 const POS = { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 };
 const ROLE = { SYSTEM: 0, USER: 1, ASSISTANT: 2 };
@@ -35,6 +36,8 @@ const DEFAULTS = {
     template: DEFAULT_TEMPLATE,
     noteDepth: 4,
     noteTemplate: DEFAULT_NOTE_TEMPLATE,
+    noteWinOpen: false, // หน้าต่างสมุดจดแบบลอย (จำแยกแต่ละเครื่อง)
+    noteWin: {},        // ตำแหน่ง/ขนาดเป็นสัดส่วนของจอ + ย่ออยู่ไหม
     skipQuiet: true,
     onceNotice: true,
     scheme: 'theme', // theme | light | dark
@@ -116,15 +119,43 @@ function activeItems() {
     return out;
 }
 
-/** สมุดจดของแชทนี้ { text, on } */
+// สมุดจดล็อกกับแชท: จำ id แชทและบอทที่เป็นเจ้าของไว้ (noteOwner) ถ้า metadata ถูกคัดลอกไปแชทอื่น
+// (แตกกิ่ง, checkpoint, Save as, เปลี่ยนชื่อแชท) สมุดจดจะไม่ถูกส่งและแก้ไม่ได้จนกว่าผู้ใช้จะเลือก
+// "ใช้กับแชทนี้" หรือ "เริ่มสมุดใหม่" จึงไม่เผลอส่งเรื่องของแชทหนึ่งไปอีกแชทหรืออีกบอท
+
+const curChatId = () => String(ctx().getCurrentChatId() ?? '');
+
+/** บอท/กลุ่มของแชทที่เปิดอยู่ */
+function currentWho() {
+    const c = ctx();
+    if (c.groupId) {
+        const g = (c.groups || []).find(x => String(x.id) === String(c.groupId));
+        return { key: 'g:' + c.groupId, name: g?.name || 'แชทกลุ่ม' };
+    }
+    const ch = c.characters?.[c.characterId];
+    return { key: 'c:' + (ch?.avatar || c.name2 || ''), name: ch?.name || c.name2 || '' };
+}
+
+/** สมุดจดของแชทนี้ { text, on, lock } · lock = null หรือ { sameBot, name, chat } เมื่อเป็นของแชทอื่น */
 function noteOf() {
     const st = chatStore(false);
-    return { text: String(st?.note ?? ''), on: st?.noteOn !== false };
+    const text = String(st?.note ?? '');
+    const owner = st?.noteOwner;
+    let lock = null;
+    if (text.trim() && owner?.chat && owner.chat !== curChatId()) {
+        lock = { sameBot: owner.who === currentWho().key, name: String(owner.name || ''), chat: String(owner.chat) };
+    }
+    return { text, on: st?.noteOn !== false, lock };
 }
 
 function noteActive() {
     const n = noteOf();
-    return n.on && !!n.text.trim();
+    return n.on && !n.lock && !!n.text.trim();
+}
+
+function claimNote(st) {
+    const w = currentWho();
+    st.noteOwner = { chat: curChatId(), who: w.key, name: w.name };
 }
 
 // ───────────────────────── injection ─────────────────────────
@@ -549,29 +580,24 @@ function buildOverlay() {
 
     // ── notes ──
     $root.on('input', '[data-ref="note"]', function () {
-        if (!setNote(String(this.value), this.dataset.chat)) return;
-        updateNoteMeta();
-        renderStatus();
-        updateWandBadge();
+        setNote(String(this.value), this.dataset.chat, 'panel');
     });
-    $root.on('change', '[data-act="note-on"]', function () {
-        const st = chatStore(true);
-        if (!st) return;
-        st.noteOn = this.checked;
-        save('chat');
-        applyInjection();
-        updateNoteMeta();
-        renderStatus();
+    $root.on('change', '[data-act="note-on"]', function () { setNoteOn(this.checked); });
+    $root.on('click', '[data-act="note-adopt"]', adoptNote);
+    $root.on('click', '[data-act="note-fresh"]', freshNote);
+    $root.on('click', '[data-act="note-win"]', () => {
+        if (isNoteWinOpen()) { toggleNoteWin(); render(); return; }
+        closeOverlay(); // หน้าต่างลอยอยู่ใต้แผง: ปิดแผงให้เห็นแชทกับหน้าต่าง
+        openNoteWin();
     });
     $root.on('click', '[data-act="note-copy"]', async () => {
         try { await navigator.clipboard.writeText(noteOf().text); toastr.success('คัดลอกแล้ว', '', { timeOut: 1200 }); }
         catch { $root.find('[data-ref="note"]').trigger('focus').trigger('select'); toastr.info('เลือกข้อความไว้แล้ว กดคัดลอกเองได้เลย'); }
     });
     $root.on('click', '[data-act="note-clear"]', async () => {
-        if (!noteOf().text.trim()) return;
+        if (!noteOf().text.trim() || noteOf().lock) return;
         if (!(await confirmBox({ title: 'ล้างสมุดจดของแชทนี้?', text: 'ข้อความทั้งหมดในสมุดจดจะหายไป', ok: 'ล้าง', danger: true }))) return;
         setNote('');
-        render();
     });
 
     bindSettingsView();
@@ -720,6 +746,7 @@ function closeOverlay() {
 
 function refresh() {
     if ($root && !$root.hasClass('ayc-hidden')) render();
+    renderNoteWin();
     updateWandBadge();
 }
 
@@ -813,14 +840,29 @@ function viewList(scope) {
 function viewNotes() {
     if (!hasChat()) return emptyState('fa-comment-slash', 'ยังไม่ได้เปิดแชท', 'สมุดจดผูกกับแชท เปิดแชทก่อนแล้วค่อยจด');
     const n = noteOf();
+    const who = currentWho();
+    const winOpen = isNoteWinOpen();
+    const lock = n.lock ? `
+  <div class="ayc-nw-lock ayc-mt" role="alert">
+    <div>${icon('fa-lock')} <b>สมุดจดนี้เป็นของแชทอื่น ยังไม่ถูกส่ง</b></div>
+    <small>${n.lock.sameBot
+        ? `ติดมากับแชทที่แตกกิ่ง คัดลอก หรือเปลี่ยนชื่อมาจาก “${esc(n.lock.chat)}”`
+        : `เป็นของบอท “${esc(n.lock.name || '?')}” (แชท “${esc(n.lock.chat)}”) ไม่ใช่บอทนี้`}</small>
+    <div class="ayc-nw-lockbtns">
+      <button class="ayc-btn" data-act="note-adopt">${icon('fa-lock-open')} ใช้กับแชทนี้</button>
+      <button class="ayc-btn" data-act="note-fresh">${icon('fa-file')} เริ่มสมุดใหม่</button>
+    </div>
+  </div>` : '';
     return `
-<h3 class="ayc-h">${icon('fa-feather-pointed')} สมุดจดของแชทนี้ <small>ส่งให้โมเดลทุกเทิร์น · บันทึกเองขณะพิมพ์</small></h3>
+<h3 class="ayc-h">${icon('fa-feather-pointed')} สมุดจดของแชทนี้ <small>${esc(who.name || '')} · ส่งให้โมเดลทุกเทิร์น · บันทึกเองขณะพิมพ์</small></h3>
 <div class="ayc-card-plain ayc-notebox">
   <div class="ayc-setrow">
     <div class="ayc-grow"><b>ส่งให้โมเดล</b><small>ปิดไว้ = ยังเก็บข้อความไว้ แต่ไม่ส่ง</small></div>
-    ${switchHtml(n.on, 'data-act="note-on"', 'ส่งสมุดจดให้โมเดล')}
+    ${switchHtml(n.on, `data-act="note-on" ${n.lock ? 'disabled' : ''}`, 'ส่งสมุดจดให้โมเดล')}
   </div>
-  <textarea class="ayc-input ayc-note" data-ref="note" data-chat="${esc(ctx().getCurrentChatId() ?? '')}" rows="12" spellcheck="false"
+  <button class="ayc-btn ${winOpen ? '' : 'ayc-primary'} ayc-mt" data-act="note-win">${icon(winOpen ? 'fa-window-restore' : 'fa-clone')} ${winOpen ? 'ปิดหน้าต่างลอย' : 'เปิดเป็นหน้าต่างลอย (จดไปพร้อมอ่านแชท)'}</button>
+  ${lock}
+  <textarea class="ayc-input ayc-note" data-ref="note" data-chat="${esc(curChatId())}" rows="12" spellcheck="false" ${n.lock ? 'readonly' : ''}
     placeholder="จดอะไรก็ได้ที่อยากให้บอทจำตลอด เช่น&#10;- {{user}} แพ้ถั่ว&#10;- ซ่อนกุญแจไว้ใต้กระถางหน้าบ้าน&#10;- สัญญาว่าจะกลับมาก่อนพระจันทร์เต็มดวง">${esc(n.text)}</textarea>
   <div class="ayc-notemeta" data-ref="note-meta"></div>
   <div class="ayc-row ayc-mt">
@@ -828,35 +870,90 @@ function viewNotes() {
     <button class="ayc-btn ayc-btn-danger" data-act="note-clear">${icon('fa-eraser')} ล้าง</button>
   </div>
 </div>
-<div class="ayc-hint">ต่างจากคำสั่ง: สมุดจดถูกส่งเป็น “ข้อเท็จจริงที่ต้องจำ” ไม่ใช่คำสั่งให้ทำตาม ส่งแยกที่ความลึก ${Number(settings().noteDepth)} (ปรับได้ในตั้งค่า) · เก็บไว้กับไฟล์แชท · ใช้ {{char}} {{user}} ได้ · เพิ่มบรรทัดจาก Quick Reply ด้วย <code>/ayc-note ข้อความ</code></div>`;
+<div class="ayc-hint">ต่างจากคำสั่ง: สมุดจดถูกส่งเป็น “ข้อเท็จจริงที่ต้องจำ” ไม่ใช่คำสั่งให้ทำตาม ส่งแยกที่ความลึก ${Number(settings().noteDepth)} (ปรับได้ในตั้งค่า) · ล็อกกับแชทนี้: ถ้าแชทถูกแตกกิ่งหรือคัดลอก สมุดที่ติดไปจะไม่ถูกส่งจนกว่าจะกด “ใช้กับแชทนี้” · ใช้ {{char}} {{user}} ได้ · เพิ่มบรรทัดจาก Quick Reply ด้วย <code>/ayc-note ข้อความ</code></div>`;
 }
 
 let noteMetaTimer = 0;
 function updateNoteMeta() {
     if (!$root) return;
     const n = noteOf();
-    const len = n.text.trim().length;
-    const where = !settings().enabled ? 'ส่วนขยายปิดอยู่ ไม่ถูกส่ง'
-        : !n.on ? 'ปิดการส่งไว้' : len ? `ส่งทุกเทิร์น · ความลึก ${Number(settings().noteDepth)}` : 'ว่าง ไม่มีอะไรถูกส่ง';
-    $root.find('[data-ref="note-meta"]').text(`${len.toLocaleString()} ตัวอักษร · ${where}`);
+    const meta = noteMetaText();
+    $root.find('[data-ref="note-meta"]').text(meta);
     clearTimeout(noteMetaTimer);
-    if (!len || typeof ctx().getTokenCountAsync !== 'function') return;
+    if (!n.text.trim() || typeof ctx().getTokenCountAsync !== 'function') return;
     noteMetaTimer = setTimeout(async () => {
         try {
             const t = await ctx().getTokenCountAsync(ctx().substituteParams(n.text.trim()));
-            $root.find('[data-ref="note-meta"]').text(`${len.toLocaleString()} ตัวอักษร ≈ ${t} tokens · ${where}`);
+            $root.find('[data-ref="note-meta"]').text(meta.replace(' ตัวอักษร', ` ตัวอักษร ≈ ${t} tokens`));
         } catch { /* ignore */ }
     }, 600);
 }
 
-function setNote(text, chatId = null) {
-    if (chatId != null && chatId !== String(ctx().getCurrentChatId() ?? '')) return false; // แชทเปลี่ยนไปแล้ว
+function setNote(text, chatId = null, from = null) {
+    if (chatId != null && chatId !== curChatId()) return false; // แชทเปลี่ยนไปแล้ว
+    if (noteOf().lock) return false; // เป็นของแชทอื่น ต้องเลือกก่อน
     const st = chatStore(true);
     if (!st) return false;
     st.note = text;
+    claimNote(st);
     save('chat');
     applyInjection();
+    noteChanged(from);
     return true;
+}
+
+/** ใช้สมุดจดที่ติดมากับแชทนี้ต่อ (ย้ายเจ้าของมาเป็นแชทนี้) */
+function adoptNote() {
+    const st = chatStore(false);
+    if (!st) return;
+    claimNote(st);
+    save('chat');
+    applyInjection();
+    noteChanged();
+    toastr.success('สมุดจดนี้เป็นของแชทนี้แล้ว จะถูกส่งตั้งแต่เทิร์นถัดไป', '', { timeOut: 2000 });
+}
+
+/** ทิ้งสมุดจดที่ติดมา แล้วเริ่มสมุดว่างของแชทนี้ */
+async function freshNote() {
+    const ok = await (($root && !$root.hasClass('ayc-hidden'))
+        ? confirmBox({ title: 'เริ่มสมุดใหม่?', text: 'ข้อความที่ติดมาจากแชทอื่นจะถูกลบออกจากแชทนี้ (แชทต้นทางไม่เป็นอะไร)', ok: 'เริ่มใหม่', danger: true })
+        : Promise.resolve(window.confirm('เริ่มสมุดใหม่? ข้อความที่ติดมาจากแชทอื่นจะถูกลบออกจากแชทนี้ (แชทต้นทางไม่เป็นอะไร)')));
+    if (!ok) return;
+    const st = chatStore(false);
+    if (!st) return;
+    st.note = '';
+    claimNote(st);
+    save('chat');
+    applyInjection();
+    noteChanged();
+}
+
+function setNoteOn(on) {
+    const st = chatStore(true);
+    if (!st) return;
+    st.noteOn = !!on;
+    save('chat');
+    applyInjection();
+    noteChanged();
+}
+
+/** ข้อความสั้นใต้สมุดจด: ยาวเท่าไร ถูกส่งไหม */
+function noteMetaText() {
+    const n = noteOf();
+    const len = n.text.trim().length;
+    const where = n.lock ? 'ล็อกอยู่ ไม่ถูกส่ง' : !settings().enabled ? 'ส่วนขยายปิดอยู่ ไม่ถูกส่ง'
+        : !n.on ? 'ปิดการส่งไว้' : len ? `ส่งทุกเทิร์น · ความลึก ${Number(settings().noteDepth)}` : 'ว่าง ไม่มีอะไรถูกส่ง';
+    return `${len.toLocaleString()} ตัวอักษร · ${where}`;
+}
+
+/** สมุดจดเปลี่ยน: อัปเดตทั้งแผงและหน้าต่างลอย ยกเว้นช่องที่กำลังพิมพ์อยู่ (from) */
+function noteChanged(from = null) {
+    if (from !== 'win') renderNoteWin();
+    if ($root && !$root.hasClass('ayc-hidden')) {
+        if (from === 'panel') { updateNoteMeta(); renderStatus(); }
+        else render();
+    }
+    updateWandBadge();
 }
 
 function makeSortable($body, scope) {
@@ -1064,7 +1161,7 @@ function viewSettings() {
 
 function bindSettingsView() {
     const s = () => settings();
-    const after = () => { ctx().saveSettingsDebounced(); applyInjection(); renderStatus(); };
+    const after = () => { ctx().saveSettingsDebounced(); applyInjection(); renderStatus(); renderNoteWin(); };
 
     $root.on('click', '[data-set]', function () {
         const k = String($(this).data('set'));
@@ -1399,7 +1496,13 @@ function mountMenus() {
   <span>As you command</span><b class="ayc-wand-badge"></b>
 </div>`);
     $wand.on('click', () => openOverlay());
-    $('#extensionsMenu').append($wand);
+    const $noteItem = $(`
+<div id="ayc_wand_note" class="list-group-item flex-container flexGap5 interactable" tabindex="0" title="เปิด/ปิดสมุดจดแบบหน้าต่างลอย">
+  <div class="fa-solid fa-feather-pointed extensionsMenuExtensionButton"></div>
+  <span>สมุดจด</span>
+</div>`);
+    $noteItem.on('click', () => { toggleNoteWin(); refresh(); });
+    $('#extensionsMenu').append($wand, $noteItem);
 
     if (document.getElementById('ayc_settings')) return;
     const $panel = $(`
@@ -1414,7 +1517,7 @@ function mountMenus() {
       <label class="checkbox_label"><input type="checkbox" id="ayc_launcher_cb"><span>ปุ่มลอยบนจอ (ตัวเลข = คำสั่งที่มีผลอยู่)</span></label>
       <div class="ayc-drawer-btns">
         <div class="menu_button" data-ayc-open="global"><i class="fa-solid fa-scroll"></i> เปิดแผงคำสั่ง</div>
-        <div class="menu_button" data-ayc-open="notes"><i class="fa-solid fa-feather-pointed"></i> สมุดจด</div>
+        <div class="menu_button" data-ayc-notewin title="เปิด/ปิดสมุดจดแบบหน้าต่างลอย"><i class="fa-solid fa-feather-pointed"></i> สมุดจด</div>
         <div class="menu_button" data-ayc-open="lib"><i class="fa-solid fa-book-bookmark"></i> คลัง</div>
         <div class="menu_button" data-ayc-open="settings"><i class="fa-solid fa-gear"></i> ตั้งค่า</div>
         <div class="menu_button" data-ayc-look><i class="fa-solid fa-paintbrush"></i> แต่งปุ่มลอย</div>
@@ -1444,6 +1547,7 @@ function mountMenus() {
     });
     $panel.on('click', '[data-ayc-open]', function () { openOverlay(String($(this).data('ayc-open'))); });
     $panel.on('click', '[data-ayc-look]', openCustomize);
+    $panel.on('click', '[data-ayc-notewin]', () => { toggleNoteWin(); refresh(); });
     $panel.on('click', '[data-ayc-reload]', reloadWithFreshFiles);
     $panel.on('click', '[data-ayc-diag]', async () => {
         const $box = $panel.find('[data-ayc-diagbox]');
@@ -1519,14 +1623,17 @@ function registerCommands() {
         name: 'ayc-note',
         returns: 'ข้อความในสมุดจดของแชทนี้',
         unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'ข้อความที่จะเพิ่มเป็นบรรทัดใหม่ (ไม่ใส่ = เปิดสมุดจด)', typeList: [ARGUMENT_TYPE.STRING] })],
-        helpString: 'ไม่ใส่ข้อความ = เปิดสมุดจดของแชทนี้ · ใส่ข้อความ = เพิ่มเป็นบรรทัดใหม่ท้ายสมุดจด เช่น <code>/ayc-note {{user}} ซ่อนกุญแจไว้ใต้กระถาง</code>',
+        helpString: 'ไม่ใส่ข้อความ = เปิด/ปิดหน้าต่างสมุดจดแบบลอย · ใส่ข้อความ = เพิ่มเป็นบรรทัดใหม่ท้ายสมุดจด เช่น <code>/ayc-note {{user}} ซ่อนกุญแจไว้ใต้กระถาง</code>',
         callback: (_args, value) => {
             const line = String(value ?? '').trim();
-            if (!line) { openOverlay('notes'); return noteOf().text; }
+            if (!line) { toggleNoteWin(); refresh(); return noteOf().text; }
+            if (!hasChat()) { toastr.warning('ยังไม่ได้เปิดแชท'); return ''; }
+            if (noteOf().lock) { toastr.warning('สมุดจดของแชทนี้ติดมาจากแชทอื่น เปิดสมุดจดแล้วเลือก “ใช้กับแชทนี้” หรือ “เริ่มสมุดใหม่” ก่อน'); openNoteWin(); return ''; }
             const cur = noteOf().text.replace(/\s+$/, '');
-            if (!setNote(cur ? `${cur}\n${line}` : line)) { toastr.warning('ยังไม่ได้เปิดแชท'); return ''; }
+            if (!setNote(cur ? `${cur}\n${line}` : line)) return '';
             $root?.find('[data-ref="note"]').val(noteOf().text); // แผงเปิดค้างอยู่ก็เห็นบรรทัดใหม่ทันที
-            refresh();
+            const wta = document.querySelector('#ayc-notewin textarea');
+            if (wta) wta.value = noteOf().text;
             toastr.success('เพิ่มลงสมุดจดแล้ว', '', { timeOut: 1400 });
             return noteOf().text;
         },
@@ -1602,9 +1709,23 @@ jQuery(async () => {
             palette: () => palette?.current ?? null,
         });
         renderLauncher();
+        initNoteWin({
+            settings,
+            save: () => ctx().saveSettingsDebounced(),
+            info: () => {
+                const ok = hasChat();
+                return { hasChat: ok, chatId: ok ? curChatId() : '', who: ok ? (currentWho().name || curChatId()) : '', note: noteOf(), active: settings().enabled && noteActive() };
+            },
+            setText: (text, chatId) => setNote(text, chatId, 'win'),
+            setOn: setNoteOn,
+            adopt: adoptNote,
+            fresh: freshNote,
+            metaText: noteMetaText,
+            openPanel: () => openOverlay('notes'),
+        });
 
         const { eventSource, eventTypes } = ctx();
-        eventSource.on(eventTypes.CHAT_CHANGED, () => { pendingOnce = null; applyInjection(); refresh(); checkForNewVersion(); });
+        eventSource.on(eventTypes.CHAT_CHANGED, () => { pendingOnce = null; applyInjection(); refresh(); renderNoteWin(); checkForNewVersion(); });
         eventSource.on(eventTypes.GENERATION_AFTER_COMMANDS, onAfterCommands);
         eventSource.on(eventTypes.MESSAGE_RECEIVED, onMessageReceived);
         eventSource.on(eventTypes.GENERATION_STOPPED, () => { pendingOnce = null; });
