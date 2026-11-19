@@ -20,6 +20,7 @@
     --ayc-border: var(--SmartThemeBorderColor, #4a4a55);
     --ayc-surface: color-mix(in srgb, var(--ayc-fg) 6%, transparent);
     --ayc-surface2: color-mix(in srgb, var(--ayc-fg) 10%, transparent);
+    --ayc-field: var(--ayc-surface2); /* พื้นช่องพิมพ์ */
     --ayc-soft: color-mix(in srgb, var(--ayc-border) 45%, transparent);
     --ayc-dim: color-mix(in srgb, var(--ayc-fg) 62%, transparent);
     /* One visual system: the theme accent is THE accent (no second purple, no gradients);
@@ -71,15 +72,39 @@
     --ayc-dim: #6f6b66; /* slop-ok: fixed mode palette */
     --ayc-shadow: 0 4px 16px rgba(60, 40, 20, 0.08); /* slop-ok: warm shadow of the light mode */
 }
+:is(#ayc-overlay, #ayc-notewin)[data-scheme="light"] { --ayc-field: var(--ayc-surface); }
+/* Dark = night-friendly, for a dark room (same values as NIGHT in night-palette.js): a near-black
+   panel, soft grey text instead of white, faint borders, text boxes darker than the panel, and the
+   theme accent with less saturation at 7:1 (--ayc-p-accent-night, set once the palette is ready). */
 :is(#ayc-overlay, #ayc-notewin)[data-scheme="dark"] {
-    --ayc-fg: #ececf1; /* slop-ok: fixed mode palette */
-    --ayc-bg: #15151b; /* slop-ok: fixed mode palette */
-    --ayc-border: #34343f; /* slop-ok: fixed mode palette */
-    --ayc-surface: #1e1e26; /* slop-ok: fixed mode palette */
-    --ayc-surface2: #272731; /* slop-ok: fixed mode palette */
-    --ayc-soft: #2c2c36; /* slop-ok: fixed mode palette */
-    --ayc-dim: #9b9ba8; /* slop-ok: fixed mode palette */
+    --ayc-fg: #c4c0cb; /* slop-ok: night palette */
+    --ayc-bg: #111015; /* slop-ok: night palette */
+    --ayc-border: #27262d; /* slop-ok: night palette */
+    --ayc-surface: #17161c; /* slop-ok: night palette */
+    --ayc-surface2: #1c1b21; /* slop-ok: night palette */
+    --ayc-field: #0d0c10; /* slop-ok: night palette */
+    --ayc-soft: #1f1e24; /* slop-ok: night palette */
+    --ayc-dim: #8a8693; /* slop-ok: night palette */
+    --ayc-accent: color-mix(in oklab, var(--SmartThemeQuoteColor, #e18a24) 55%, #a6a2ae); /* slop-ok: night fallback before the palette */
+    --ayc-on-accent: #111015; /* slop-ok: night palette */
+    --ayc-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
 }
+#ayc-overlay[data-scheme="dark"] { background: rgba(0, 0, 0, 0.72); }
+/* Fixed modes: ST's own controls inside the panel (inputs, menu buttons, checkboxes) follow the
+   mode, not the user's theme — otherwise a light theme leaves bright boxes in the dark panel. */
+:is(#ayc-overlay, #ayc-notewin):is([data-scheme="light"], [data-scheme="dark"]) {
+    --SmartThemeBodyColor: var(--ayc-fg);
+    --SmartThemeEmColor: var(--ayc-fg);
+    --SmartThemeBorderColor: var(--ayc-border);
+    --SmartThemeBlurTintColor: var(--ayc-bg);
+}
+:where(#ayc-overlay, #ayc-notewin):is([data-scheme="light"], [data-scheme="dark"]) :is(.text_pole, textarea, select, input:is([type="text"], [type="search"], [type="number"], [type="url"], [type="email"], [type="password"], :not([type]))) {
+    background-color: var(--ayc-field);
+    color: var(--ayc-fg);
+    border-color: var(--ayc-border);
+}
+:where(#ayc-overlay, #ayc-notewin):is([data-scheme="light"], [data-scheme="dark"]) :is(.text_pole, textarea, input)::placeholder { color: var(--ayc-dim); opacity: 1; }
 
 :is(#ayc-overlay, #ayc-notewin).ayc-hidden { display: none !important; }
 html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
@@ -233,7 +258,7 @@ html.ayc-noscroll, html.ayc-noscroll body { overflow: hidden; }
 :is(#ayc-overlay, #ayc-notewin) .ayc-input {
     width: 100%; min-height: 40px; margin: 0; padding: 7px 11px;
     border: 1px solid var(--ayc-border); border-radius: var(--ayc-r-ctl);
-    background: var(--ayc-surface2); color: var(--ayc-fg);
+    background: var(--ayc-field); color: var(--ayc-fg);
     font: inherit; font-size: 16px; /* 16px กัน iOS ซูมเข้า */
     outline: none; transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -736,7 +761,7 @@ html.ayc-pal :is(:is(#ayc-overlay, #ayc-notewin):not([data-scheme="light"]):not(
     --ayc-on-accent: var(--ayc-p-on-accent);
 }
 html.ayc-pal :is(#ayc-overlay, #ayc-notewin)[data-scheme="light"] { --ayc-accent: var(--ayc-p-accent-light); --ayc-on-accent: #ffffff; }
-html.ayc-pal :is(#ayc-overlay, #ayc-notewin)[data-scheme="dark"] { --ayc-accent: var(--ayc-p-accent-dark); }
+html.ayc-pal :is(#ayc-overlay, #ayc-notewin)[data-scheme="dark"] { --ayc-accent: var(--ayc-p-accent-night, var(--ayc-p-accent-dark)); --ayc-on-accent: #111015; } /* slop-ok: night palette */
 
 /* ST's plain .menu_button is display:flex, which drops the space between an icon and its
    label. Zero-specificity roots, so a gap this extension already sets still wins. */

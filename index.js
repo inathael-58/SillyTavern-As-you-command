@@ -8,15 +8,16 @@
 
 import { STARTERS, CATEGORIES } from './starters.js';
 import { installThemePalette } from './theme-palette.js';
+import { installNightAccent } from './night-palette.js';
 import { initNoteWin, renderNoteWin, openNoteWin, toggleNoteWin, isNoteWinOpen } from './notewin.js';
 import { initLauncher, refreshLooks, renderLauncher, updateLauncherBadge, resetLauncherPos, resetLook, lookEditorHtml, mountLookEditor, LAUNCH_POS_DEFAULT } from './launcher.js';
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.5.0'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.6.0'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
-const FILES = ['index.js', 'notewin.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];
+const FILES = ['index.js', 'notewin.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'night-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];
 
 const POS = { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 };
 const ROLE = { SYSTEM: 0, USER: 1, ASSISTANT: 2 };
@@ -1162,7 +1163,7 @@ function viewSettings() {
 <div class="ayc-card-plain">
   <div class="ayc-seg ayc-seg3">${SCHEMES.map(([k, ic, l]) =>
         `<button class="ayc-segbtn ${s.scheme === k ? 'ayc-on' : ''}" data-set="scheme" data-v="${k}">${icon(ic)} ${l}</button>`).join('')}</div>
-  <div class="ayc-hint">ตามธีม = ใช้สีจากธีม ST ที่ใช้อยู่ (สีเน้นมาจาก Quote Color) · สว่าง/มืด = พื้นสว่างหรือมืดของแผงเอง ไม่ว่าธีมจะเป็นแบบไหน แต่ยังใช้สีเน้นของธีม · สลับเร็ว ๆ ได้ที่ปุ่ม ${icon('fa-palette')} บนหัวแผง</div>
+  <div class="ayc-hint">ตามธีม = ใช้สีจากธีม ST ที่ใช้อยู่ (สีเน้นมาจาก Quote Color) · สว่าง/มืด = พื้นสว่างหรือมืดของแผงเอง ไม่ว่าธีมจะเป็นแบบไหน แต่ยังใช้สีเน้นของธีม · มืดปรับมาสำหรับเล่นในห้องมืด: ตัวอักษรไม่ขาวจ้า ขอบจาง ช่องพิมพ์มืด สีเน้นนุ่มลง · สลับเร็ว ๆ ได้ที่ปุ่ม ${icon('fa-palette')} บนหัวแผง</div>
 </div>
 
 <h3 class="ayc-h">${icon('fa-box-archive')} สำรอง / ย้ายเครื่อง <small>ลิสต์ทุกแชท + คลังของฉัน</small></h3>
@@ -1720,6 +1721,7 @@ jQuery(async () => {
     try {
         palette = installThemePalette({ prefix: 'ayc', surfaces: { light: '#f6f4f1', dark: '#15151b' } });
         palette.onChange(() => refreshLooks());
+        installNightAccent(palette, 'ayc');
     } catch (err) { console.warn(LOG, 'theme palette', err); }
     try {
         settings();
