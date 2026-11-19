@@ -13,7 +13,7 @@ import { initLauncher, refreshLooks, renderLauncher, updateLauncherBadge, resetL
 
 const MODULE = 'as_you_command';
 const LOG = '[As you command]';
-const VERSION = '1.4.0'; // ให้ตรงกับ manifest.json เสมอ
+const VERSION = '1.5.0'; // ให้ตรงกับ manifest.json เสมอ
 const BASE_URL = new URL('.', import.meta.url);
 /** ไฟล์ทั้งหมดของ extension ใช้ตอนดึงไฟล์ใหม่มาทับ cache ของเบราว์เซอร์ */
 const FILES = ['index.js', 'notewin.js', 'starters.js', 'launcher.js', 'theme-palette.js', 'float-colors.js', 'style.css', 'manifest.json'];
@@ -418,6 +418,23 @@ const NAV = [
     ['settings', 'fa-gear', 'ตั้งค่า'],
 ];
 
+// หน้าตาแผง: สีตามธีม หรือสว่าง/มืดแบบตายตัวที่ไม่สนธีม (ใช้แค่สีเน้นของธีม) — ปุ่มบนหัวแผงแตะวนไปทีละแบบ แบบเดียวกับ Reverie
+const SCHEMES = [
+    ['theme', 'fa-palette', 'ตามธีม'],
+    ['light', 'fa-sun', 'สว่าง'],
+    ['dark', 'fa-moon', 'มืด'],
+];
+
+function schemeIndex(id) { return Math.max(0, SCHEMES.findIndex(x => x[0] === id)); }
+
+function renderSchemeBtn() {
+    const $b = $root?.find('[data-act="scheme"]');
+    if (!$b?.length) return;
+    const i = schemeIndex(settings().scheme);
+    const label = `สีแผง: ${SCHEMES[i][2]} — แตะเพื่อเปลี่ยนเป็น${SCHEMES[(i + 1) % SCHEMES.length][2]}`;
+    $b.html(icon(SCHEMES[i][1])).attr({ title: label, 'aria-label': label });
+}
+
 function buildOverlay() {
     $root = $(`
 <div id="ayc-overlay" class="ayc-hidden" aria-hidden="true">
@@ -431,6 +448,7 @@ function buildOverlay() {
       <div class="ayc-hactions">
         <span class="ayc-master">${switchHtml(true, 'data-act="master"', 'เปิด/ปิดทั้งหมด')}</span>
         <button class="ayc-icon" data-act="preview" title="ดูสิ่งที่โมเดลจะเห็น" aria-label="ดู prompt">${icon('fa-eye')}</button>
+        <button class="ayc-icon" data-act="scheme"></button>
         <button class="ayc-icon" data-act="close" title="ปิด" aria-label="ปิด">${icon('fa-xmark')}</button>
       </div>
     </header>
@@ -477,6 +495,13 @@ function buildOverlay() {
     });
     $root.on('click', '[data-act="close"]', closeOverlay);
     $root.on('click', '[data-act="preview"]', openPreviewSheet);
+    $root.on('click', '[data-act="scheme"]', () => {
+        const s = settings();
+        s.scheme = SCHEMES[(schemeIndex(s.scheme) + 1) % SCHEMES.length][0];
+        ctx().saveSettingsDebounced();
+        render();
+        renderNoteWin();
+    });
     $root.on('click', '[data-act="new"]', () => {
         if (ui.tab === 'lib') openEditor({ mode: 'lib', id: null });
         else openEditor({ mode: 'item', scope: ui.tab === 'chat' ? 'chat' : 'global', id: null });
@@ -756,6 +781,7 @@ function render(animate = false) {
     if (!$root) return;
     const s = settings();
     $root.attr('data-scheme', s.scheme || 'theme').attr('data-view', ui.tab);
+    renderSchemeBtn();
     $root.find('.ayc-navbtn').each(function () {
         $(this).toggleClass('ayc-on', $(this).data('tab') === ui.tab);
     });
@@ -1134,9 +1160,9 @@ function viewSettings() {
 
 <h3 class="ayc-h">${icon('fa-palette')} หน้าตาแผง</h3>
 <div class="ayc-card-plain">
-  <div class="ayc-seg ayc-seg3">${[['theme', 'fa-palette', 'ตามธีม'], ['light', 'fa-sun', 'สว่าง'], ['dark', 'fa-moon', 'มืด']].map(([k, ic, l]) =>
+  <div class="ayc-seg ayc-seg3">${SCHEMES.map(([k, ic, l]) =>
         `<button class="ayc-segbtn ${s.scheme === k ? 'ayc-on' : ''}" data-set="scheme" data-v="${k}">${icon(ic)} ${l}</button>`).join('')}</div>
-  <div class="ayc-hint">ตามธีม = ใช้สีจากธีม ST ที่ใช้อยู่ (สีเน้นมาจาก Quote Color)</div>
+  <div class="ayc-hint">ตามธีม = ใช้สีจากธีม ST ที่ใช้อยู่ (สีเน้นมาจาก Quote Color) · สว่าง/มืด = พื้นสว่างหรือมืดของแผงเอง ไม่ว่าธีมจะเป็นแบบไหน แต่ยังใช้สีเน้นของธีม · สลับเร็ว ๆ ได้ที่ปุ่ม ${icon('fa-palette')} บนหัวแผง</div>
 </div>
 
 <h3 class="ayc-h">${icon('fa-box-archive')} สำรอง / ย้ายเครื่อง <small>ลิสต์ทุกแชท + คลังของฉัน</small></h3>
